@@ -65,3 +65,21 @@ Asked at the Checkpoint 1 lab, Mon 14 Sep 2026. Aaron presented the breakdown: p
 **Context impact.** none — §10.1 D5 is unchanged; only its contingency is discharged.
 
 **Commit.** pending
+
+### DEC-002 — `run.py` experiment-to-spec mapping for placeholder errors
+
+- **Date:** 2026-09-15
+- **Raised by:** agent on SPEC-01
+- **Spec:** SPEC-01
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** SPEC-01 specifies that `run.py` dispatches `--exp {0,1,2,2b,3,4,all}` to `src/experiments.py` entry points that each raise `NotImplementedError` naming the spec that will implement them, and gives only one concrete acceptance criterion: `--exp 0` must name SPEC-07. It does not say which spec ID the other five entry points (`1`, `2`, `2b`, `3`, `4`) should name.
+
+**Decision.** Named each entry point after the spec whose title in `progress-tracker.md` matches that experiment: `1` → SPEC-13 (Experiment 1: geometry × budget), `2` → SPEC-14 (Experiment 2: threshold shift), `2b` → SPEC-15 (tail fitting, Experiment 2b), `3` and `4` → SPEC-16 (Experiments 3 and 4). `--exp all` runs every entry point in sequence, so it currently fails on the first (`0` → SPEC-07) until SPEC-07 lands.
+
+**Rationale.** This mapping is already unambiguous from `progress-tracker.md`'s spec titles; no design choice was actually open, just a lookup SPEC-01 didn't spell out inline. Recorded so a future spec doesn't have to re-derive it or wonder whether the message wording is a contract.
+
+**Context impact.** none — this is an implementation detail of an error message, not a schema, signature or invariant.
+
+**Commit.** pending

@@ -24,7 +24,7 @@ Full definitions in `workflow-rules.md` §4.
 
 | Spec | Title | Owner | Phase | Status | Depends on | PR | Decisions |
 |---|---|---|---|---|---|---|---|
-| SPEC-01 | Repo skeleton, entry point, model contracts | Aaron | P0 — Foundation | `not started` | — |  |  |
+| SPEC-01 | Repo skeleton, entry point, model contracts | Aaron | P0 — Foundation | `in review` | — |  | DEC-002 |
 | SPEC-02 | Lattice initialisation, ignition, settlement | Aaron | P0 — Foundation | `not started` | SPEC-01 |  |  |
 | SPEC-03 | Step function and `run_fire` | Aaron | P1 — Model core | `not started` | SPEC-01, SPEC-02 |  |  |
 | SPEC-04 | Metrics and scar statistics | Armaan | P1 — Model core | `not started` | SPEC-03 |  |  |
