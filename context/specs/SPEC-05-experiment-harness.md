@@ -10,7 +10,7 @@ implements: [§4.5, §5, §8]
 issue:
 branch: spec/SPEC-05-experiment-harness
 pr:
-decisions: []
+decisions: [DEC-006, DEC-009]
 ---
 
 # SPEC-05 — Experiment harness
@@ -30,7 +30,7 @@ A list of `Config`s goes in; `results/exp{N}.parquet` comes out with every §5 c
 
 - `run_id`: a deterministic hash of the full config. Primary key, and the basis of resume.
 - `code_version`: the git short SHA at run time.
-- Assembling one schema row per run from `Config` + `RunResult` + `metrics.py`.
+- Assembling one schema row per run from `Config` (the config echo) + `RunResult`, whose outcome fields arrive fully populated from `run_fire`: raw fields by SPEC-03, derived fields by SPEC-04 (DEC-006). The harness copies them and does not recompute any outcome field.
 - The parallel runner: `multiprocessing.Pool`, **chunked by config, not by replicate**.
 - Parquet writing to `results/exp{N}.parquet`, one row per run.
 - Resume: if the output file exists, skip configs whose `run_id` is already present.
@@ -122,5 +122,5 @@ PY
 
 - **A placeholder `code_version` committed alongside real results is invisible until submission** and is a `workflow-rules.md` §9 violation. Make the runner refuse to write rather than fall back to `"unknown"`. SPEC-18 audits this, but by then the runs are expensive to redo.
 - §5 is described in `project-context.md` as the most load-bearing contract in the project. Implement it once, exactly, here.
-- Scars are never stored for a sweep (§4.1). The runner should not even offer `capture_scar` as a grid-level option; SPEC-17 captures a hand-picked handful separately.
+- Scars are never stored for a sweep (§4.1). The runner should not even offer `capture_scar` as a grid-level option; SPEC-13 captures a hand-picked handful separately (DEC-009).
 - Expected total across all experiments is 10–20 MB. A single file over 50 MB means something is being written per-replicate that should not be — stop and raise it (`workflow-rules.md` §9).

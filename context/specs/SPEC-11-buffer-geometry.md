@@ -10,7 +10,7 @@ implements: [§4.2, §3.6]
 issue:
 branch: spec/SPEC-11-buffer-geometry
 pr:
-decisions: []
+decisions: [DEC-007]
 ---
 
 # SPEC-11 — `buffer`
@@ -53,7 +53,7 @@ The targeted asset-protection condition exists: concentric rings grown outward f
 
 ## Interface contract
 
-As `project-context.md` §4.2 — do not redesign. `buffer` takes no geometry parameters; it needs to know where the settlement is, which it derives from the grid rather than from a new argument. If that is not derivable from `occupied` alone, **raise a DEC** rather than adding a parameter to the §4.2 signature — SPEC-02, SPEC-09 and SPEC-10 are all written against it.
+As `project-context.md` §4.2 — do not redesign; do not add a parameter to the signature. `buffer` takes no condition-specific parameters. It locates the settlement block as the square of side `params["settlement_side"]` centred at `(L//2, L//2)` (§3.6). SPEC-02's call site always supplies `settlement_side`: `cfg.geometry_params["settlement_side"]` if set, else `SETTLEMENT_SIDE` (DEC-007). Do not import `SETTLEMENT_SIDE` into the generator or infer the block from `occupied`, because the side varies per config in SPEC-12's pilot. `buffer` ignores `phi`.
 
 ## Behaviour
 
@@ -72,6 +72,7 @@ As `project-context.md` §4.2 — do not redesign. `buffer` takes no geometry pa
 - [ ] Budget met within the shared tolerance over ≥50 seeds at `b ∈ {0.05, 0.15, 0.30}` and `p ∈ {0.4, 0.55, 0.7}`.
 - [ ] At a budget large enough that rings reach the lattice edge, the generator truncates and still meets the budget, or raises a clear error if the budget is unachievable.
 - [ ] `n_treat == 0` returns all-False without touching `rng`.
+- [ ] With `settlement_side=32` in params, rings grow from the 32-side block, not the default (DEC-007).
 - [ ] Constructing a `buffer` config with `settlement=False` raises at `Config` construction (§4.4), not here.
 
 ## Invariants
@@ -91,7 +92,7 @@ cfg = Config(L=256, p=0.55, settlement=True, condition="buffer", b=0.15, seed=0)
 s,f = initial_grids(cfg, np.random.default_rng(0))
 occ = (s == 1)
 n = int(round(0.15*occ.sum()))
-m = generate("buffer", np.random.default_rng(1), occ, n)
+m = generate("buffer", np.random.default_rng(1), occ, n, phi=0.0, settlement_side=SETTLEMENT_SIDE)
 print("treated", int((m&occ).sum()), "target", n, "outside-occupied", int((m&~occ).sum()))
 PY
 ```
@@ -111,4 +112,4 @@ PY
 - **Do not exclude ignition regions.** Ignition under `"random_cell"` may land inside the buffer ring, and that is correct: excluding it would bias the comparison in favour of buffer geometries (§3.6), which is exactly the result SQ4 is trying to test honestly.
 - `buffer` sits **off** the clustering-scale axis (§4.2, §11). It is the targeted condition, not a point on the curve, and the report should not plot it as one.
 - This is the SQ4 condition and the project's insurance against a boring result (roadmap §11). It is last in the descope order among the geometries, but it is not free — budget a real day.
-- `SETTLEMENT_SIDE` is still provisional while this is implemented. Write the generator so that changing it in SPEC-12 requires no change here.
+- `SETTLEMENT_SIDE` is still provisional while this is implemented. Write the generator so that changing it in SPEC-12 requires no change here: it reads the side from `params` (DEC-007).

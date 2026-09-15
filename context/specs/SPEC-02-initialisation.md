@@ -10,7 +10,7 @@ implements: [§3.1, §3.2, §3.5, §3.6, §4.1]
 issue:
 branch: spec/SPEC-02-initialisation
 pr:
-decisions: []
+decisions: [DEC-007, DEC-008]
 ---
 
 # SPEC-02 — Lattice initialisation, ignition, settlement
@@ -29,9 +29,9 @@ decisions: []
 **In scope**
 
 - `initial_grids(cfg, rng) -> tuple[np.ndarray, np.ndarray]` returning `(state, f)`.
-- Settlement placement: a filled square of side `SETTLEMENT_SIDE` centred at `(L//2, L//2)`, state `SETTLEMENT`, `f = 0`.
+- Settlement placement: a filled square of side `side` centred at `(L//2, L//2)`, state `SETTLEMENT`, `f = 0`, where `side = cfg.geometry_params.get("settlement_side", SETTLEMENT_SIDE)` (DEC-007).
 - Occupancy draw at probability `p` over non-settlement cells.
-- Computing `n_treat = round(b * occupied.sum())` and calling `geometries.generate` with it.
+- Computing `n_treat = round(b * occupied.sum())` and calling `geometries.generate` with it, passing `phi` and the resolved `settlement_side` in `**params` (see Behaviour; DEC-007, DEC-008).
 - Applying the returned mask to `f` only.
 - Both ignition modes of §3.5, and returning the ignition coordinates for `random_cell`.
 - `SETTLEMENT_SIDE` as a module constant in `src/model.py`, marked provisional.
@@ -75,6 +75,8 @@ def initial_grids(cfg: Config, rng) -> tuple[np.ndarray, np.ndarray]: ...  # (st
 3. Apply the treatment mask: masked occupied cells get `f = f_treat`.
 4. Ignite.
 
+**The `generate` call site** (DEC-007, DEC-008) is `generate(cfg.condition, rng, occupied, n_treat, **{**cfg.geometry_params, "phi": cfg.phi, "settlement_side": side})`. `cfg.phi` is the only source of wind direction: if `cfg.geometry_params` contains a `"phi"` key, raise rather than let either value silently win. Generators that do not use `phi` or `settlement_side` ignore them (SPEC-09).
+
 Occupancy is drawn **before** treatment because the generator must see realised occupancy to hit an exact budget in occupied cells (§2 O1, O2). `b` is a fraction of **occupied** cells, never of the lattice.
 
 - Treatment changes `f` only. It never changes `state` (§3.2 step 3).
@@ -86,7 +88,8 @@ Occupancy is drawn **before** treatment because the generator must see realised 
 ## Acceptance criteria
 
 - [ ] `state` and `f` are consistent: every `EMPTY`/`SETTLEMENT` cell has `f == 0`; every `FUEL` cell has `f` in `{1.0, f_treat}`.
-- [ ] Settlement block is exactly `SETTLEMENT_SIDE²` cells, centred, all state `SETTLEMENT`, and no occupancy draw touched it.
+- [ ] Settlement block is exactly `side²` cells, centred, all state `SETTLEMENT`, and no occupancy draw touched it. Tested both with `geometry_params` lacking `settlement_side` (`side == SETTLEMENT_SIDE`) and with an explicit `settlement_side` (e.g. 32).
+- [ ] `generate` receives `phi == cfg.phi` and `settlement_side == side` in its params (checked with a stub/spy), and a `"phi"` key inside `geometry_params` raises.
 - [ ] With `settlement=False`, no cell is in state `SETTLEMENT`.
 - [ ] `n_occupied` is within sampling error of `p * (L² − settlement area)` over ≥100 seeds.
 - [ ] At `b = 0`, `f` contains only `0.0` and `1.0`, for every condition.
@@ -125,6 +128,7 @@ PY
 
 ## Notes and risks
 
+- The settlement side is read from `geometry_params["settlement_side"]` when present (DEC-007), so SPEC-12's pilot can vary it per config without touching this code. `phi` reaches the generators through the call site above (DEC-008).
 - **`SETTLEMENT_SIDE = 16` is provisional.** Mark the constant with a comment pointing at §10.2 O1 and SPEC-12. Resolving it here is a `workflow-rules.md` §7 violation.
 - Drawing occupancy over the settlement block and then overwriting it changes the rng stream relative to masking it out first. Pick one, state it in the docstring, and keep it stable — I2 and I6 both depend on a stable stream.
 - This spec calls an interface that SPEC-09 has not implemented. That is deliberate. If the §4.2 signature does not fit what you need here, **stop and raise a DEC** rather than changing it — SPEC-09 through SPEC-11 are being written against it in parallel.

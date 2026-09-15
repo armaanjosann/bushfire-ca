@@ -5,12 +5,12 @@ status: not started
 owner: Aaron
 reviewer: Armaan
 phase: P4 — Parameter freeze (Sprint 2)
-depends_on: [SPEC-05, SPEC-06, SPEC-10, SPEC-11]
+depends_on: [SPEC-05, SPEC-06, SPEC-10, SPEC-11, SPEC-19]
 implements: [§10.2 O1, §3.6, §6.2 Exp 1]
 issue:
 branch: spec/SPEC-12-parameter-freeze
 pr:
-decisions: []
+decisions: [DEC-003, DEC-007, DEC-011, DEC-015]
 ---
 
 # SPEC-12 — Settlement pilot, coarse Experiment 1, parameter freeze
@@ -22,14 +22,14 @@ decisions: []
 ## Context to read
 
 - `workflow-rules.md` — especially §5 (**the contract rule**) and §6
-- `project-context.md` §10.2 O1 (the pilot and its decision rule), §3.6 (settlement), §6.2 Exp 1, §6.1
+- `project-context.md` §10.2 O1 (the pilot and its decision rule), §3.6 (settlement, and the `settlement_side` key), §6.2 Exp 1 and the Experiment 2 selection rule, §6.1 (the pilot's `p_rel` resolves against Experiment 0b, SPEC-19)
 - `checkpoint1-bushfire-ca-roadmap.md` §8 (Sprint 2 exit: *parameters locked and justified in writing*)
 
 ## Scope
 
 **In scope**
 
-- The pilot: side ∈ {8, 16, 32, 48} × `kappa` ∈ {0, 2}, at `b = 0`, `condition = "none"`, `p_rel = +0.05`, `L = 256`, R = 50. ~800 runs, well under half an hour.
+- The pilot: side ∈ {8, 16, 32, 48} × `kappa` ∈ {0, 2}, at `b = 0`, `condition = "none"`, `p_rel = +0.05`, `L = 256`, R = 50. ~800 runs, well under half an hour. Side is varied per config through `geometry_params={"settlement_side": side}` (DEC-007), which SPEC-02 (placement), SPEC-04 (ring) and SPEC-11 (buffer) already read, so each side gets a distinct `run_id` and no model code changes for the pilot.
 - Applying the §10.2 O1 decision rule and fixing `SETTLEMENT_SIDE`.
 - Editing `project-context.md` §3.6 and §10.2 in this same PR, with a DEC entry.
 - A coarse Experiment 1 pass over a reduced grid, to locate the interesting region of `(geometry, b)`.
@@ -45,7 +45,7 @@ decisions: []
 
 **May touch**
 
-- `src/model.py` — the `SETTLEMENT_SIDE` constant only
+- `src/model.py` — the `SETTLEMENT_SIDE` constant only. The pilot varies side through `geometry_params["settlement_side"]` (DEC-007), so no other change to placement or the ring check is needed or permitted
 - `src/experiments.py` — the pilot and coarse-Exp-1 grid builders
 - `figures/make_figures.py` — the coarse heatmap builder **only**. This is an agreed exception:
   figures are Armaan's component under roadmap §9, so add one registered builder and change
@@ -58,6 +58,7 @@ decisions: []
 **Must not touch**
 
 - `src/geometries.py`, `src/metrics.py`, `src/analysis.py`
+- `src/model.py` beyond the `SETTLEMENT_SIDE` constant
 - Any other section of `project-context.md`
 
 ## Interface contract

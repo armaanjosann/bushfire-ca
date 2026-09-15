@@ -60,7 +60,7 @@ From a clean clone, `python run.py --exp all` and `pytest` both succeed, and eve
 
 ## Interface contract
 
-No new interface. `python run.py --exp all` must already exist from SPEC-01 and be wired by SPEC-07 and SPEC-13 through SPEC-16.
+No new interface. `python run.py --exp all` must already exist from SPEC-01, and be wired by SPEC-07, SPEC-19 (`0b`, before `1`) and SPEC-13 through SPEC-16.
 
 ## Behaviour
 
