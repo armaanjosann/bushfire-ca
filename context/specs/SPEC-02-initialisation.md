@@ -1,7 +1,7 @@
 ---
 id: SPEC-02
 title: Lattice initialisation, ignition, settlement
-status: not started
+status: in review
 owner: Aaron
 reviewer: Armaan
 phase: P0 — Foundation (Sprint 1)
@@ -87,20 +87,20 @@ Occupancy is drawn **before** treatment because the generator must see realised 
 
 ## Acceptance criteria
 
-- [ ] `state` and `f` are consistent: every `EMPTY`/`SETTLEMENT` cell has `f == 0`; every `FUEL` cell has `f` in `{1.0, f_treat}`.
-- [ ] Settlement block is exactly `side²` cells, centred, all state `SETTLEMENT`, and no occupancy draw touched it. Tested both with `geometry_params` lacking `settlement_side` (`side == SETTLEMENT_SIDE`) and with an explicit `settlement_side` (e.g. 32).
-- [ ] `generate` receives `phi == cfg.phi` and `settlement_side == side` in its params (checked with a stub/spy), and a `"phi"` key inside `geometry_params` raises.
-- [ ] With `settlement=False`, no cell is in state `SETTLEMENT`.
-- [ ] `n_occupied` is within sampling error of `p * (L² − settlement area)` over ≥100 seeds.
-- [ ] At `b = 0`, `f` contains only `0.0` and `1.0`, for every condition.
-- [ ] `"edge"` leaves every `FUEL` cell of row 0 `BURNING` and nothing else burning.
-- [ ] `"random_cell"` leaves exactly one cell `BURNING`, and it was `FUEL`.
-- [ ] `p = 0` with `"random_cell"` returns grids with nothing burning, and raises nothing.
-- [ ] Same `cfg` and same seed ⟹ identical `(state, f)`.
+- [x] `state` and `f` are consistent: every `EMPTY`/`SETTLEMENT` cell has `f == 0`; every `FUEL` cell has `f` in `{1.0, f_treat}`.
+- [x] Settlement block is exactly `side²` cells, centred, all state `SETTLEMENT`, and no occupancy draw touched it. Tested both with `geometry_params` lacking `settlement_side` (`side == SETTLEMENT_SIDE`) and with an explicit `settlement_side` (e.g. 32).
+- [x] `generate` receives `phi == cfg.phi` and `settlement_side == side` in its params (checked with a stub/spy), and a `"phi"` key inside `geometry_params` raises.
+- [x] With `settlement=False`, no cell is in state `SETTLEMENT`.
+- [x] `n_occupied` is within sampling error of `p * (L² − settlement area)` over ≥100 seeds.
+- [x] At `b = 0`, `f` contains only `0.0` and `1.0`, for every condition.
+- [x] `"edge"` leaves every `FUEL` cell of row 0 `BURNING` and nothing else burning.
+- [x] `"random_cell"` leaves exactly one cell `BURNING`, and it was `FUEL`.
+- [x] `p = 0` with `"random_cell"` returns grids with nothing burning, and raises nothing.
+- [x] Same `cfg` and same seed ⟹ identical `(state, f)`.
 
 ## Invariants
 
-- [ ] None owned outright. This spec must not break I6 — call `generate` with `n_treat` and let it return early; do not draw from `rng` on the treatment path yourself when `b == 0`.
+- [x] None owned outright. This spec must not break I6 — call `generate` with `n_treat` and let it return early; do not draw from `rng` on the treatment path yourself when `b == 0`.
 
 ## Verification
 
@@ -118,11 +118,11 @@ PY
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR (none needed — no contract changed)
+- [x] `status` updated in this file and in `progress-tracker.md`
 - [ ] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 

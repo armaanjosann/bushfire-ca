@@ -1,11 +1,13 @@
 """Core model contracts: Config, RunResult, wind_weights.
 
-The step function, run_fire and initial_grids land in SPEC-02 and SPEC-03.
+The step function and run_fire land in SPEC-03.
 """
 
 from dataclasses import dataclass, field
 
 import numpy as np
+
+from src import geometries
 
 # Neighbour offsets, (dy, dx). Fixed order — weights in wind_weights() are
 # indexed by this order and it must never be re-sorted (project-context.md §3.4).
@@ -15,6 +17,18 @@ DIAGONAL_FACTOR = 1.0 / np.sqrt(2.0)
 
 # Validation target only — never a grid value or a substitute for a measured p_c.
 P_C_LITERATURE = 0.407
+
+# Cell state codes, int8 (project-context.md §3.1).
+EMPTY = 0
+FUEL = 1
+BURNING = 2
+BURNT = 3
+SETTLEMENT = 4
+
+# Provisional. Bound by the pilot in project-context.md §10.2 O1, owned by
+# SPEC-12. Do not resolve it here (workflow-rules.md §7) — this is only the
+# default used when geometry_params lacks an explicit "settlement_side".
+SETTLEMENT_SIDE = 16
 
 
 @dataclass(frozen=True)
@@ -114,3 +128,60 @@ def wind_weights(kappa: float, phi: float, diagonal_factor: bool) -> np.ndarray:
         raw = np.where(is_diagonal, raw * DIAGONAL_FACTOR, raw)
 
     return raw / raw.mean()
+
+
+def initial_grids(cfg: Config, rng) -> tuple[np.ndarray, np.ndarray]:
+    """Build the initial (state, f) grids per project-context.md §3.2.
+
+    Rng-stream note (SPEC-02 notes and risks): occupancy is drawn with a
+    single rng.random((L, L)) call over the *whole* lattice, and the
+    settlement footprint (if any) is carved out and overwritten to
+    SETTLEMENT/f=0 afterwards, rather than drawing only over non-settlement
+    cells. This keeps the shape of the occupancy draw — and so the rng
+    stream it consumes — independent of whether a settlement is present or
+    how large it is, which I2 (determinism) and I6 (null treatment) both
+    depend on.
+    """
+    L = cfg.L
+    side = cfg.geometry_params.get("settlement_side", SETTLEMENT_SIDE)
+
+    settlement_mask = np.zeros((L, L), dtype=bool)
+    if cfg.settlement:
+        half = side // 2
+        centre = L // 2
+        lo = centre - half
+        hi = lo + side
+        settlement_mask[lo:hi, lo:hi] = True
+
+    occupied_draw = rng.random((L, L)) < cfg.p
+    state = np.where(occupied_draw, FUEL, EMPTY).astype(np.int8)
+    f = np.where(occupied_draw, 1.0, 0.0)
+
+    state[settlement_mask] = SETTLEMENT
+    f[settlement_mask] = 0.0
+
+    occupied = state == FUEL
+
+    if "phi" in cfg.geometry_params:
+        raise ValueError(
+            "geometry_params must not contain 'phi'; cfg.phi is the single "
+            "source of wind direction (project-context.md §4.2, DEC-008)"
+        )
+
+    n_treat = round(cfg.b * occupied.sum())
+    params = {**cfg.geometry_params, "phi": cfg.phi, "settlement_side": side}
+    mask = geometries.generate(cfg.condition, rng, occupied, n_treat, **params)
+    f[mask] = cfg.f_treat
+
+    if cfg.ignition == "edge":
+        row0 = state[0]
+        state[0] = np.where(row0 == FUEL, BURNING, row0)
+    elif cfg.ignition == "random_cell":
+        fuel_ys, fuel_xs = np.nonzero(state == FUEL)
+        if fuel_ys.size > 0:
+            idx = rng.integers(fuel_ys.size)
+            state[fuel_ys[idx], fuel_xs[idx]] = BURNING
+    else:
+        raise ValueError(f"unknown ignition mode: {cfg.ignition!r}")
+
+    return state, f
