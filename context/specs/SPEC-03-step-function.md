@@ -1,7 +1,7 @@
 ---
 id: SPEC-03
 title: Step function and run_fire
-status: not started
+status: in review
 owner: Aaron
 reviewer: Armaan
 phase: P1 — Model core (Sprint 1)

@@ -1,7 +1,4 @@
-"""Core model contracts: Config, RunResult, wind_weights.
-
-The step function and run_fire land in SPEC-03.
-"""
+"""Core model contracts: Config, RunResult, wind_weights, run_fire."""
 
 from dataclasses import dataclass, field
 
@@ -185,3 +182,168 @@ def initial_grids(cfg: Config, rng) -> tuple[np.ndarray, np.ndarray]:
         raise ValueError(f"unknown ignition mode: {cfg.ignition!r}")
 
     return state, f
+
+
+@dataclass
+class RunResult:
+    """§5 schema fields minus the config echo (SPEC-03 Interface contract).
+
+    Raw fields are always populated by run_fire (DEC-006). Derived fields
+    default to None here and are filled in by SPEC-04's metrics.py.
+    """
+
+    n_cells: int
+    n_occupied: int
+    n_treated: int
+    ignition_y: int | None
+    ignition_x: int | None
+    burned_cells: int
+    still_burning_cells: int
+    steps: int
+    truncated: bool
+    burned_fraction: float | None = None
+    burned_fraction_of_fuel: float | None = None
+    spanned: bool | None = None
+    reached_edge: bool | None = None
+    settlement_reached: bool | None = None
+    settlement_reached_step: int | None = None
+    scar: np.ndarray | None = None
+    ignition_step: np.ndarray | None = None
+
+
+def _pad_bbox(y_min, y_max, x_min, x_max, L):
+    """Tight box around (y_min..y_max, x_min..x_max), padded 1 cell, clipped
+    to the grid (project-context.md §8) — the clip is what makes the
+    absorbing boundary fall out for free instead of needing explicit wrap
+    handling."""
+    y0 = max(0, int(y_min) - 1)
+    y1 = min(L, int(y_max) + 2)
+    x0 = max(0, int(x_min) - 1)
+    x1 = min(L, int(x_max) + 2)
+    return y0, y1, x0, x1
+
+
+def _bounding_box(burning_mask, L):
+    """Padded bounding box of a boolean mask, or None if it is empty."""
+    ys, xs = np.nonzero(burning_mask)
+    if ys.size == 0:
+        return None
+    return _pad_bbox(ys.min(), ys.max(), xs.min(), xs.max(), L)
+
+
+def _shifted(mask, dy, dx):
+    """mask shifted so out[y, x] = mask[y - dy, x - dx]; cells shifted in
+    from outside the array read as False — the non-periodic, absorbing
+    boundary (project-context.md §3.1), not a wraparound."""
+    h, w = mask.shape
+    out = np.zeros_like(mask)
+    sy0, sy1 = max(0, -dy), h - max(0, dy)
+    sx0, sx1 = max(0, -dx), w - max(0, dx)
+    dy0, dy1 = max(0, dy), h - max(0, -dy)
+    dx0, dx1 = max(0, dx), w - max(0, -dx)
+    out[dy0:dy1, dx0:dx1] = mask[sy0:sy1, sx0:sx1]
+    return out
+
+
+def run_fire(cfg: Config, capture_scar: bool = False) -> RunResult:
+    """Run one fire to extinction (project-context.md §3.3, §3.7, §8).
+
+    Pure in cfg: builds its own generator from cfg.seed and never accepts an
+    external rng, which is what makes two calls on the same Config produce
+    an identical RunResult (I2). The Bernoulli draw is one rng.random((L, L))
+    call per step — the full grid, matching §3.3/§8's "over the whole grid"
+    — so the bounding-box restriction below (which only scopes the shifted-
+    mask arithmetic, the expensive part) doesn't change the rng stream and
+    a step-for-step full-grid implementation reaches the same result.
+    """
+    rng = np.random.default_rng(cfg.seed)
+    L = cfg.L
+    max_steps = cfg.max_steps if cfg.max_steps is not None else 8 * L
+
+    state, f = initial_grids(cfg, rng)
+
+    occupied = (state == FUEL) | (state == BURNING)
+    n_occupied = int(occupied.sum())
+    n_treated = (
+        int(np.count_nonzero(occupied & (f == cfg.f_treat))) if cfg.b > 0 else 0
+    )
+
+    ignition_y = ignition_x = None
+    if cfg.ignition == "random_cell":
+        ys, xs = np.nonzero(state == BURNING)
+        if ys.size > 0:
+            ignition_y, ignition_x = int(ys[0]), int(xs[0])
+
+    burn_clock = np.zeros((L, L), dtype=np.uint8)
+
+    ignition_step = None
+    if capture_scar:
+        ignition_step = np.full((L, L), -1, dtype=np.int32)
+        ignition_step[state == BURNING] = 0
+
+    weights = wind_weights(cfg.kappa, cfg.phi, cfg.diagonal_factor)
+
+    bbox = _bounding_box(state == BURNING, L)
+    step_number = 0
+    truncated = False
+
+    while bbox is not None:
+        if step_number >= max_steps:
+            truncated = True
+            break
+        step_number += 1
+
+        draws = rng.random((L, L))
+
+        y0, y1, x0, x1 = bbox
+        sub_state = state[y0:y1, x0:x1]
+        sub_f = f[y0:y1, x0:x1]
+        sub_burn_clock = burn_clock[y0:y1, x0:x1]
+        sub_draws = draws[y0:y1, x0:x1]
+
+        sub_burning = sub_state == BURNING
+        fuel_mask = sub_state == FUEL
+
+        no_ignite_prob = np.ones(sub_state.shape, dtype=np.float64)
+        for i, (dy, dx) in enumerate(NEIGHBOURS):
+            shifted_burning = _shifted(sub_burning, dy, dx)
+            p_d = np.clip(cfg.beta * weights[i] * sub_f, 0.0, 1.0)
+            no_ignite_prob *= np.where(shifted_burning, 1.0 - p_d, 1.0)
+
+        p_ignite = np.where(fuel_mask, 1.0 - no_ignite_prob, 0.0)
+        ignite_mask = fuel_mask & (sub_draws < p_ignite)
+
+        sub_burn_clock[sub_burning] += 1
+        newly_burnt = sub_burning & (sub_burn_clock >= cfg.tau)
+        sub_state[newly_burnt] = BURNT
+        sub_state[ignite_mask] = BURNING
+
+        if capture_scar:
+            ignition_step[y0:y1, x0:x1][ignite_mask] = step_number
+
+        new_y, new_x = np.nonzero(sub_state == BURNING)
+        if new_y.size == 0:
+            bbox = None
+        else:
+            bbox = _pad_bbox(
+                new_y.min() + y0, new_y.max() + y0,
+                new_x.min() + x0, new_x.max() + x0,
+                L,
+            )
+
+    burned_cells = int(np.count_nonzero(state == BURNT))
+    still_burning_cells = int(np.count_nonzero(state == BURNING))
+
+    return RunResult(
+        n_cells=L * L,
+        n_occupied=n_occupied,
+        n_treated=n_treated,
+        ignition_y=ignition_y,
+        ignition_x=ignition_x,
+        burned_cells=burned_cells,
+        still_burning_cells=still_burning_cells,
+        steps=step_number,
+        truncated=truncated,
+        scar=state.copy() if capture_scar else None,
+        ignition_step=ignition_step if capture_scar else None,
+    )
