@@ -399,3 +399,67 @@ SPEC-17 only reads the npz. Its AC and verification grep now require that `run_f
 **Context impact.** `project-context.md` §3.6, §4.6.
 
 **Commit.** pending
+
+### DEC-016 — Jupyter notebooks adopted as the presentation layer
+
+- **Date:** 2026-09-20
+- **Raised by:** Aaron 
+- **Spec:** SPEC-08, SPEC-17, SPEC-18, SPEC-20, SPEC-21
+- **Type:** contract change
+- **Status:** resolved
+
+**Situation.** The unit's technical specification and rubric were released on 18 September, after the repository structure and analysis workflow were settled. The code rubric assesses "Use of Jupyter Notebook as a Communication Tool" as one of seven criteria. The project had no notebooks: `figures/make_figures.py` was the sole presentation layer, and SPEC-17's objective explicitly required "no notebook anywhere in the chain".
+
+**Decision.** A `notebooks/` directory is added, holding three numbered notebooks that **consume** the SPEC-08 figure registry rather than duplicating it:
+
+- `01-model-and-validation.ipynb` — SPEC-20, owner Aaron, depends on SPEC-08
+- `02-treatment-geometries.ipynb` — SPEC-21, owner Armaan, depends on SPEC-17
+- `03-thresholds-and-tails.ipynb` — SPEC-21
+
+`figures/make_figures.py` remains the canonical figure producer and the thing SPEC-18's clean-clone gate runs. Notebooks add prose, equations and interpretation on top of it. `jupyter` and `ipykernel` are added to `requirements.txt`; the `workflow-rules.md` §7 no-new-dependency rule is scoped to the **model**, which stays Python + NumPy only.
+
+The split into two specs rather than one is deliberate: `01` depends on SPEC-08 (Sprint 2) and `02`/`03` on SPEC-17 (Sprint 4), so bundling them would block the early notebook behind the late one. It also gives each team member an owned notebook PR, which the rubric assesses individually.
+
+**Rationale.** The existing architecture already separates simulation from presentation — experiments write parquet, figures read parquet — so a notebook layer sits on the existing seam without touching `src/`, the results schema, any experiment spec, or any invariant. SPEC-08's builders return a `Figure`, which displays inline unchanged, so no interface changes. The cost is authoring, not engineering.
+
+**Context impact.** `project-context.md` §9 (layout gains `notebooks/`; the figure clause is restated to scope it to `make_figures.py`).
+
+**Commit.** pending
+
+### DEC-017 — Notebooks are committed with outputs stored
+
+- **Date:** 2026-09-20
+- **Raised by:** Aaron
+- **Spec:** SPEC-08, SPEC-17, SPEC-20, SPEC-21
+- **Type:** contract change
+- **Status:** resolved
+
+**Situation.** `workflow-rules.md` §7 forbids committing generated figures, and §9 keeps `figures/out/` gitignored. A notebook committed with its outputs stored is, in effect, committed figures. A notebook committed with outputs stripped opens as empty cells for anyone who does not run it.
+
+**Decision.** The three notebooks are committed **with outputs stored**, executed top to bottom with sequential execution counts. This is an explicit exception to §7, scoped to `notebooks/*.ipynb` and to nothing else; `figures/out/` stays gitignored and generated figures stay uncommitted. `.ipynb_checkpoints/` is gitignored.
+
+Consequently the "re-running produces byte-identical output" criterion in SPEC-08 and SPEC-17 is scoped to the **figure files produced by `make_figures.py`**, not to notebook files, whose metadata will never be byte-stable.
+
+**Rationale.** A marker opening a stripped notebook sees no analysis. The criterion being assessed is communication, and an unexecuted notebook communicates nothing. The diff noise is real but bounded: three files, touched at the end of the project, kept small by reusing registry figures rather than embedding large images.
+
+**Context impact.** `project-context.md` §9 (the notebook clause states the exception).
+
+**Commit.** pending
+
+### DEC-018 — Notebook `01` may call `run_fire` for a live demonstration; `make_figures.py` still may not
+
+- **Date:** 2026-09-20
+- **Raised by:** Aaron
+- **Spec:** SPEC-20 (and SPEC-21 by exclusion)
+- **Type:** contract change
+- **Status:** resolved
+
+**Situation.** `project-context.md` §9 and `workflow-rules.md` §9 state that the presentation layer reads from `results/` and never calls `run_fire`. The rubric asks for interactive elements in the notebook, and the project demonstration requires the model ready to run live. A notebook that only replays stored figures satisfies neither. Read literally, the existing rule forbids the live demonstration and an agent implementing SPEC-20 would hit a §6 stop condition.
+
+**Decision.** The prohibition is scoped to `figures/make_figures.py`, which **must never call `run_fire`**, unchanged. `notebooks/01-model-and-validation.ipynb` may call `run_fire` in **exactly one cell**, bounded at `L ≤ 128`, with a fixed seed, completing in under ten seconds, labelled in markdown as a demonstration. No reported quantity may come from it. Notebooks `02` and `03` may not call `run_fire` at all; the geometry gallery's calls to `geometries.generate` are not simulation and are permitted.
+
+**Rationale.** The rule exists so that no reported number can come from an unrecorded run. A seeded, bounded, explicitly-labelled demonstration that feeds nothing into the report does not threaten that, and it is what makes the notebook a demonstration rather than a slideshow. Scoping the exception to one cell in one notebook, checkable by a grep in SPEC-20's verification, keeps it from widening.
+
+**Context impact.** `project-context.md` §9 (the figure clause and the notebook clause).
+
+**Commit.** pending

@@ -31,7 +31,7 @@ Full definitions in `workflow-rules.md` §4.
 | SPEC-05 | Experiment harness | Aaron | P2 — Harness & validation | `not started` | SPEC-03, SPEC-04 |  | DEC-006, DEC-009 |
 | SPEC-06 | `p_c` estimation, FSS, `p_rel` resolver | Armaan | P2 — Harness & validation | `not started` | SPEC-05 |  | DEC-004 |
 | SPEC-07 | Experiment 0: percolation validation | Aaron | P2 — Harness & validation | `not started` | SPEC-05, SPEC-06 |  | DEC-001, DEC-004, DEC-014 |
-| SPEC-08 | Figure foundation, validation figure | Armaan | P2 — Harness & validation | `not started` | SPEC-07 |  |  |
+| SPEC-08 | Figure foundation, validation figure | Armaan | P2 — Harness & validation | `not started` | SPEC-07 |  | DEC-001, DEC-016, DEC-017 |
 | SPEC-09 | Geometry framework, `none`, `random` | Armaan | P3 — Treatment geometries | `not started` | SPEC-02 |  | DEC-007, DEC-008 |
 | SPEC-10 | `patches`, `strips_perp`, `strips_para` | Armaan | P3 — Treatment geometries | `not started` | SPEC-09 |  | DEC-007, DEC-008 |
 | SPEC-11 | `buffer` | Armaan | P3 — Treatment geometries | `not started` | SPEC-02, SPEC-09 |  | DEC-007 |
@@ -40,9 +40,11 @@ Full definitions in `workflow-rules.md` §4.
 | SPEC-14 | Experiment 2: threshold shift | Armaan | P5 — Full experiments | `not started` | SPEC-06, SPEC-13, SPEC-19 |  | DEC-003, DEC-004, DEC-005, DEC-011, DEC-012 |
 | SPEC-15 | Tail fitting, Experiment 2b | Armaan | P5 — Full experiments | `not started` | SPEC-14, SPEC-19 |  | DEC-005, DEC-012 |
 | SPEC-16 | Experiments 3 and 4, frame invariance | Aaron | P5 — Full experiments | `not started` | SPEC-13 |  | DEC-003, DEC-008, DEC-011, DEC-015 |
-| SPEC-17 | Results figures | Armaan | P6 — Delivery | `not started` | SPEC-13, SPEC-14, SPEC-15, SPEC-16 |  | DEC-009, DEC-010, DEC-013 |
-| SPEC-18 | Reproducibility gate | Aaron | P6 — Delivery | `not started` | SPEC-08, SPEC-17 |  |  |
+| SPEC-17 | Results figures | Armaan | P6 — Delivery | `not started` | SPEC-13, SPEC-14, SPEC-15, SPEC-16 |  | DEC-009, DEC-010, DEC-013, DEC-016, DEC-017 |
+| SPEC-18 | Reproducibility gate | Aaron | P6 — Delivery | `not started` | SPEC-08, SPEC-17, SPEC-20, SPEC-21 |  | DEC-016, DEC-017 |
 | SPEC-19 | Experiment 0b: untreated STUDY baseline thresholds | Aaron | P2 — Harness & validation | `not started` | SPEC-05, SPEC-06 |  | DEC-011 |
+| SPEC-20 | Notebook foundation, model-and-validation notebook | Aaron | P2 — Harness & validation | `not started` | SPEC-08 |  | DEC-016, DEC-017, DEC-018 |
+| SPEC-21 | Results notebooks: geometries, thresholds, tails | Armaan | P6 — Delivery | `not started` | SPEC-17, SPEC-20 |  | DEC-016, DEC-017 |
 
 ## Blocked
 

@@ -404,6 +404,10 @@ src/
   analysis.py     # p_c estimation, FSS, tail fitting, assertions
 figures/
   make_figures.py # every report figure, reading only from results/
+notebooks/
+  01-model-and-validation.ipynb     # model walkthrough, live demo, Exp 0 validation
+  02-treatment-geometries.ipynb     # the contribution: geometry, budget, SQ4
+  03-thresholds-and-tails.ipynb     # threshold shift, tail fits, sensitivity
 tests/
   test_invariants.py   # I1-I11
 results/          # parquet, one row per run — tracked in git, append-only
@@ -411,6 +415,8 @@ report/
 ```
 
 `figures/make_figures.py` reads from `results/` and nothing else. It must never call `run_fire`.
+
+Notebooks are the **presentation layer over that script**, not a second source of figures: they import the `FIGURES` registry and add prose, equations and interpretation (DEC-016). They are committed **with outputs stored**, executed top to bottom with sequential execution counts — an explicit exception to `workflow-rules.md` §7, scoped to `notebooks/*.ipynb`; `figures/out/` stays gitignored (DEC-017). `notebooks/01-model-and-validation.ipynb` may call `run_fire` in exactly one cell, bounded at `L <= 128`, seeded and labelled as a demonstration, feeding no reported quantity; notebooks `02` and `03` may not call it at all (DEC-018).
 
 ---
 

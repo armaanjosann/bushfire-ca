@@ -10,14 +10,14 @@ implements: [§9, §11, §10.1 D5]
 issue:
 branch: spec/SPEC-17-results-figures
 pr:
-decisions: [DEC-009, DEC-010, DEC-013]
+decisions: [DEC-009, DEC-010, DEC-013, DEC-016, DEC-017]
 ---
 
 # SPEC-17 — Results figures
 
 ## Objective
 
-Every figure the report cites is produced by `figures/make_figures.py` from `results/` alone, by one command, with no notebook anywhere in the chain.
+Every figure the report cites is produced by `figures/make_figures.py` from `results/` alone, by one command.
 
 ## Context to read
 
@@ -45,6 +45,7 @@ Every figure the report cites is produced by `figures/make_figures.py` from `res
 - The validation figure — SPEC-08 owns it and it stays as-is.
 - Running anything, re-estimating any threshold, or re-fitting any tail. Capturing scars is SPEC-13's (DEC-009).
 - Writing the report.
+- The results notebooks — SPEC-21 owns `02` and `03`, and consumes this spec's builders (DEC-016). Register the builder here; interpret it there.
 
 ## Files
 
@@ -79,7 +80,7 @@ As SPEC-08's registry — register new builders in `FIGURES`, do not redesign th
 - [ ] The efficiency figure divides by `n_treated / n_cells`, verified by reading the code.
 - [ ] The SQ4 figure plots both response variables for every condition, so the trade-off is visible or its absence is.
 - [ ] The scar figure and the space-time view both read `results/scars_illustrative.npz`, and raise a clear error if it or its `ignition_step` arrays are missing.
-- [ ] Re-running `--all` twice produces byte-identical output.
+- [ ] Re-running `--all` twice produces byte-identical **figure files** (notebook files excluded, DEC-017).
 - [ ] A test asserts every registered builder is callable and every one that the report cites is registered.
 
 ## Invariants
@@ -109,7 +110,7 @@ ls -la figures/out/ results/scars_illustrative.npz
 ## Notes and risks
 
 - **The SQ4 figure is the one that decides whether this project has an interesting result.** The roadmap expects the arrangement minimising mean burned area is *not* the one minimising `P(settlement reached)`. If the trade-off is there, it is the headline; if it is not, that is still a finding and the figure is what shows it honestly.
-- **Figure count is a guess.** The unit's report format and marking rubric have not been released. Eight figure families is sized from roadmap §4.5, not from a stated requirement. If a shorter report is required, cut figures — do not rebuild them; every one reads from committed parquet and can be dropped without touching `results/`.
+- **The report limit is now known: five A4 pages excluding figures, references and appendices.** Eight figure families is more interpretation than five pages of prose can carry. Cut from the *report*, not from this spec — every builder reads from committed parquet, and a figure that does not fit the report still belongs in the notebooks (SPEC-21), which are assessed separately. Prioritise the clustering-scale curve, efficiency, threshold shift and the SQ4 trade-off; treat the rest as notebook-only if the page count bites.
 - The qualitative evidence criterion (roadmap §13) is satisfied by the scars and the space-time view (DEC-013). Do not drop them for time.
 - Restyling eight figures at the end of Sprint 3 is the classic way to lose a day. SPEC-08 set the shared style precisely so this spec does not have to.
 - The efficiency metric is where the ranking is least obvious (roadmap §4.5), so it is worth plotting with confidence intervals rather than as bare means.
