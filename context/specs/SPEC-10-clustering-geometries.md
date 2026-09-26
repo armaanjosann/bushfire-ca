@@ -1,13 +1,13 @@
 ---
 id: SPEC-10
 title: Clustering-scale family — patches, strips_perp, strips_para
-status: not started
+status: in progress
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)
 depends_on: [SPEC-09]
 implements: [§4.2, §10.1 D2, §11]
-issue:
+issue: "#10"
 branch: spec/SPEC-10-clustering-geometries
 pr:
 decisions: [DEC-007, DEC-008]
