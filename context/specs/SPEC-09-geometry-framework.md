@@ -10,7 +10,7 @@ implements: [§4.2]
 issue: "#9"
 branch: spec/SPEC-09-geometry-framework
 pr:
-decisions: [DEC-007, DEC-008]
+decisions: [DEC-007, DEC-008, DEC-023]
 ---
 
 # SPEC-09 — Geometry framework, `none`, `random`
@@ -76,20 +76,20 @@ That last one deserves the emphasis `project-context.md` §7 gives it. The natur
 
 ## Acceptance criteria
 
-- [ ] `generate("none", ...)` with `n_treat > 0` raises.
-- [ ] `generate("random", ...)` hits `n_treat` exactly, for `n_treat` from 1 to `occupied.sum()`.
-- [ ] `generate("random", ...)` with `n_treat == occupied.sum()` treats every occupied cell and no other.
-- [ ] Every condition at `n_treat == 0` returns an all-False mask.
-- [ ] An unknown condition string raises with a message listing the valid conditions.
-- [ ] The placement assertion is live in the shipped code, not only in tests.
-- [ ] The budget helper is shared, so SPEC-10 and SPEC-11 cannot each invent their own tolerance.
-- [ ] `generate("none" | "random", ..., phi=0.7, settlement_side=32)` returns the same mask as the call without those keys, including at `n_treat == 0` (DEC-007, DEC-008).
+- [x] `generate("none", ...)` with `n_treat > 0` raises.
+- [x] `generate("random", ...)` hits `n_treat` exactly, for `n_treat` from 1 to `occupied.sum()`.
+- [x] `generate("random", ...)` with `n_treat == occupied.sum()` treats every occupied cell and no other.
+- [x] Every condition at `n_treat == 0` returns an all-False mask.
+- [x] An unknown condition string raises with a message listing the valid conditions.
+- [x] The placement assertion is live in the shipped code, not only in tests.
+- [x] The budget helper is shared, so SPEC-10 and SPEC-11 cannot each invent their own tolerance.
+- [x] `generate("none" | "random", ..., phi=0.7, settlement_side=32)` returns the same mask as the call without those keys, including at `n_treat == 0` (DEC-007, DEC-008).
 
 ## Invariants
 
-- [ ] **I6 null treatment** — same seed, every condition, `b=0` ⟹ byte-identical results. Catches accidental rng consumption inside generators.
-- [ ] **I7 budget parity** — `n_treated` within tolerance of `round(b * n_occupied)` for every condition; asserted in the generator and again over a results frame.
-- [ ] **I8 treatment placement** — `mask & ~occupied` is empty.
+- [x] **I6 null treatment** — same seed, every condition, `b=0` ⟹ byte-identical results. Catches accidental rng consumption inside generators.
+- [x] **I7 budget parity** — `n_treated` within tolerance of `round(b * n_occupied)` for every condition; asserted in the generator and again over a results frame.
+- [x] **I8 treatment placement** — `mask & ~occupied` is empty.
 
 ## Verification
 
@@ -109,10 +109,10 @@ PY
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR
 - [ ] `status` updated in this file and in `progress-tracker.md`
 - [ ] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)

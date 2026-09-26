@@ -463,3 +463,26 @@ Consequently the "re-running produces byte-identical output" criterion in SPEC-0
 **Context impact.** `project-context.md` §9 (the figure clause and the notebook clause).
 
 **Commit.** pending
+
+### DEC-023 — I7's "over a results frame" half deferred to SPEC-05
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (SPEC-09)
+- **Spec:** SPEC-09 (and SPEC-05)
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** §7 I7 reads "assert in the generator and again over the results frame", and SPEC-09 owns the I7 test. There is no results frame until the harness (SPEC-05) writes one, and SPEC-09 may not touch `src/experiments.py`.
+
+**Decision.** `tests/test_invariants.py::test_i7_budget_parity` covers the generator half: `check_mask` asserts the budget live inside `generate`, and the test re-checks `n_treated` against `round(b * n_occupied)` end-to-end through `run_fire` for every condition in `geometries.IMPLEMENTED`. The frame half — the same check over every row of a written parquet — is SPEC-05's to add when the frame exists; it can be a second assertion in the same test function.
+
+Two smaller points from the same spec, recorded here rather than in separate entries:
+
+- `generate` validates the condition string **before** the `n_treat == 0` early return, so an unknown condition raises even at `b = 0`. SPEC-01's stub returned all-False for any string at zero budget. An unknown string is not a condition, and failing at config time is cheaper than failing at the first `b > 0` run.
+- `geometries.IMPLEMENTED` (the conditions with a registered generator) and `geometries.CONDITIONS` (every condition the schema knows) are module-level tuples so SPEC-10 and SPEC-11 extend test coverage by registering a generator, not by editing SPEC-09's tests. No §4.2 signature changes.
+
+**Numbering note.** DEC-019 to DEC-022 are on the SPEC-04 branch, in flight at the same time as this one. Whichever merges second will need a trivial conflict resolution at the end of this file.
+
+**Context impact.** none
+
+**Commit.** pending
