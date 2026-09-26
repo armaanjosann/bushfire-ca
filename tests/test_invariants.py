@@ -76,14 +76,78 @@ def test_i9_conservation():
     assert result.burned_cells + result.still_burning_cells <= result.n_occupied
 
 
-@pytest.mark.xfail(reason="I4 isotropy lands in SPEC-04", strict=False)
-def test_i4():
-    raise NotImplementedError
+@pytest.mark.slow
+def test_i4_isotropy():
+    """kappa=0: scar second moments in x and y equal within a 99% CI over
+    200 replicates (project-context.md §7 I4). SPEC-04.
+
+    STUDY defaults at p=0.55, L=128, unbounded: fires are partial (mean
+    burned fraction ~0.5) so the check is on real scar shapes, not on a
+    fully burnt square. Seeds are fixed, so the test is deterministic; the
+    CI is 99% so that a re-seeding is unlikely to flip it (DEC-022).
+    """
+    from src.metrics import scar_second_moments
+
+    R = 200
+    diffs = np.empty(R)
+    sizes = np.empty(R)
+    for seed in range(R):
+        cfg = Config(L=128, p=0.55, kappa=0.0, seed=seed)
+        result = run_fire(cfg, capture_scar=True)
+        var_y, var_x = scar_second_moments(result.scar)
+        diffs[seed] = var_x - var_y
+        sizes[seed] = 0.5 * (var_x + var_y)
+
+    # the scars must be non-trivial for the comparison to mean anything
+    assert sizes.mean() > 100.0
+
+    mean = diffs.mean()
+    se = diffs.std(ddof=1) / np.sqrt(R)
+    assert abs(mean) < 2.576 * se, (
+        f"anisotropic at kappa=0: mean(var_x - var_y) = {mean:.2f} ± {se:.2f}"
+    )
 
 
-@pytest.mark.xfail(reason="I5 wind monotonicity lands in SPEC-04", strict=False)
-def test_i5():
-    raise NotImplementedError
+@pytest.mark.slow
+def test_i5_wind_monotonicity():
+    """Mean scar centroid projection on phi strictly increasing over
+    kappa in {0, 1, 2, 4} (project-context.md §7 I5). SPEC-04.
+
+    Measured in a bounded-time design — p=1.0, max_steps=30, L=128, phi=0,
+    R=200 per kappa — so the displacement reflects the kernel alone. Run to
+    extinction the measure is confounded: at kappa=0 the fire burns the
+    whole lattice and its centroid sits at the centre regardless of
+    ignition, and at kappa=4 the plume either dies or hits the edge, so the
+    unbounded means are not monotone (DEC-022, with the numbers).
+    """
+    from src.metrics import centroid_projection, scar_centroid
+
+    R = 200
+    kappas = [0.0, 1.0, 2.0, 4.0]
+    means = []
+    ses = []
+    for kappa in kappas:
+        proj = np.empty(R)
+        for seed in range(R):
+            cfg = Config(
+                L=128, p=1.0, kappa=kappa, phi=0.0, max_steps=30, seed=seed
+            )
+            result = run_fire(cfg, capture_scar=True)
+            assert result.burned_cells > 0
+            origin = (result.ignition_y, result.ignition_x)
+            proj[seed] = centroid_projection(
+                scar_centroid(result.scar), origin, cfg.phi
+            )
+        means.append(proj.mean())
+        ses.append(proj.std(ddof=1) / np.sqrt(R))
+
+    for i in range(len(kappas) - 1):
+        assert means[i] < means[i + 1], (
+            f"not monotone: kappa={kappas[i]} -> {means[i]:.2f}±{ses[i]:.2f}, "
+            f"kappa={kappas[i + 1]} -> {means[i + 1]:.2f}±{ses[i + 1]:.2f}"
+        )
+    # and the whole ordering is well separated, not a coin flip
+    assert means[-1] - means[0] > 10 * max(ses)
 
 
 @pytest.mark.xfail(reason="I6 null treatment lands in SPEC-09", strict=False)
