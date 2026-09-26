@@ -10,7 +10,7 @@ implements: [§4.3, §3.5, §3.6]
 issue: "#4"
 branch: spec/SPEC-04-metrics
 pr:
-decisions: [DEC-006, DEC-007]
+decisions: [DEC-006, DEC-007, DEC-019, DEC-020, DEC-021, DEC-022]
 ---
 
 # SPEC-04 — Metrics and scar statistics
@@ -84,21 +84,21 @@ If a function here needs something `RunResult` does not carry, **stop and raise 
 
 ## Acceptance criteria
 
-- [ ] Every function is pure: no file access, no plotting, no global state, no rng.
-- [ ] `spanned` on a hand-built grid with one burnt cell in row `L−1` is True; with none, False.
-- [ ] `reached_edge` is True for a burnt cell in each of the four edges, tested separately.
-- [ ] `settlement_ring(L, side)` has exactly `4*(side+1)` cells and none of them is inside the block.
-- [ ] `burned_fraction_of_fuel(0, 0) == 0.0`.
-- [ ] `scar_centroid` of a symmetric hand-built scar is its geometric centre.
-- [ ] `scar_second_moments` of a scar wider in x than y returns `var_x > var_y`.
-- [ ] `run_fire` returns every derived outcome field populated (DEC-006): under `"random_cell"`, `spanned is None` and `reached_edge` is a bool; under `"edge"`, the reverse; with `settlement=False`, `settlement_reached` and `settlement_reached_step` are `None`; with `settlement=True`, `settlement_reached` is a bool.
-- [ ] A run with `geometry_params={"settlement_side": 32}` checks the ring of the 32-side block, not the default (DEC-007).
-- [ ] SPEC-03's I2, I3 and I9 tests still pass after the `run_fire` change.
+- [x] Every function is pure: no file access, no plotting, no global state, no rng.
+- [x] `spanned` on a hand-built grid with one burnt cell in row `L−1` is True; with none, False.
+- [x] `reached_edge` is True for a burnt cell in each of the four edges, tested separately.
+- [x] `settlement_ring(L, side)` has exactly `4*(side+1)` cells and none of them is inside the block.
+- [x] `burned_fraction_of_fuel(0, 0) == 0.0`.
+- [x] `scar_centroid` of a symmetric hand-built scar is its geometric centre.
+- [x] `scar_second_moments` of a scar wider in x than y returns `var_x > var_y`.
+- [x] `run_fire` returns every derived outcome field populated (DEC-006): under `"random_cell"`, `spanned is None` and `reached_edge` is a bool; under `"edge"`, the reverse; with `settlement=False`, `settlement_reached` and `settlement_reached_step` are `None`; with `settlement=True`, `settlement_reached` is a bool.
+- [x] A run with `geometry_params={"settlement_side": 32}` checks the ring of the 32-side block, not the default (DEC-007).
+- [x] SPEC-03's I2, I3 and I9 tests still pass after the `run_fire` change.
 
 ## Invariants
 
-- [ ] **I4 isotropy** — at `kappa=0`, scar second moments in x and y are equal within a confidence interval over ≥200 replicates.
-- [ ] **I5 wind monotonicity** — the mean scar centroid projection on `phi` is strictly increasing over `kappa ∈ {0,1,2,4}`.
+- [x] **I4 isotropy** — at `kappa=0`, scar second moments in x and y are equal within a confidence interval over ≥200 replicates.
+- [x] **I5 wind monotonicity** — the mean scar centroid projection on `phi` is strictly increasing over `kappa ∈ {0,1,2,4}`.
 
 ## Verification
 
@@ -109,10 +109,10 @@ pytest -q tests/test_invariants.py -k "i4 or i5"
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR
 - [ ] `status` updated in this file and in `progress-tracker.md`
 - [ ] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)

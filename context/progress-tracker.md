@@ -27,7 +27,7 @@ Full definitions in `workflow-rules.md` §4.
 | SPEC-01 | Repo skeleton, entry point, model contracts | Aaron | P0 — Foundation | `in review` | — |  | DEC-002 |
 | SPEC-02 | Lattice initialisation, ignition, settlement | Aaron | P0 — Foundation | `in review` | SPEC-01 |  | DEC-007, DEC-008 |
 | SPEC-03 | Step function and `run_fire` | Aaron | P1 — Model core | `in review` | SPEC-01, SPEC-02 |  | DEC-006, DEC-013 |
-| SPEC-04 | Metrics and scar statistics | Armaan | P1 — Model core | `in progress` | SPEC-03 |  | DEC-006, DEC-007 |
+| SPEC-04 | Metrics and scar statistics | Armaan | P1 — Model core | `in progress` | SPEC-03 |  | DEC-006, DEC-007, DEC-019, DEC-020, DEC-021, DEC-022 |
 | SPEC-05 | Experiment harness | Aaron | P2 — Harness & validation | `not started` | SPEC-03, SPEC-04 |  | DEC-006, DEC-009 |
 | SPEC-06 | `p_c` estimation, FSS, `p_rel` resolver | Armaan | P2 — Harness & validation | `not started` | SPEC-05 |  | DEC-004 |
 | SPEC-07 | Experiment 0: percolation validation | Aaron | P2 — Harness & validation | `not started` | SPEC-05, SPEC-06 |  | DEC-001, DEC-004, DEC-014 |
