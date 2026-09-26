@@ -1,7 +1,7 @@
 ---
 id: SPEC-10
 title: Clustering-scale family — patches, strips_perp, strips_para
-status: in progress
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)
