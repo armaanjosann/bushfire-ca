@@ -1,7 +1,7 @@
 ---
 id: SPEC-04
 title: Metrics and scar statistics
-status: in progress
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P1 — Model core (Sprint 1)
