@@ -530,3 +530,21 @@ Small decisions from the same spec, recorded together.
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-026 — Buffer: block placement, unachievable budgets, and SPEC-09's tests made extensible
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (SPEC-11)
+- **Spec:** SPEC-11 (touches SPEC-09's tests on the SPEC-09 branch)
+- **Type:** deviation
+- **Status:** resolved
+
+- **Block placement is re-derived, not imported.** The generator locates the block as rows/cols `[L//2 - side//2, L//2 - side//2 + side)` from `params["settlement_side"]`, the same arithmetic `initial_grids` uses. It does not import `SETTLEMENT_SIDE` or infer the block from `occupied` (SPEC-11 interface contract, DEC-007). A test checks the generator's first ring against the block `initial_grids` actually places for sides 8, 16, 32 and 48. A missing `settlement_side` key raises; there is no default, because a buffer around nothing is the failure the spec says to assert against.
+- **Ring 0 is never treated**, whatever `occupied` says there. In a real run the block is `SETTLEMENT` and unoccupied; if a caller passes a field with occupied cells inside the block they are skipped.
+- **Unachievable budgets raise `ValueError`** naming the shortfall: if fewer occupied cells lie outside the block than `n_treat`, the rings run off every edge without reaching the budget. `generate` already bounds `n_treat` by the total occupied count, so this can only happen when cells inside the block count toward that total, i.e. an inconsistent field.
+- **The outer ring alone is filled at random**; inner rings stay complete. The realised count is exact, so the shared tolerance never bites. One `rng.choice` per call.
+- **SPEC-09's I7 and I8 tests were amended on the SPEC-09 branch** (commit "test(spec09): I7 and I8 written to be extended by settlement conditions"), not from this branch: I7 now sets `settlement=True` for `buffer` (§4.4 rejects the config otherwise) and I8 carves the default block out of its random field and passes `phi`/`settlement_side` as the call site does. SPEC-11's frontmatter says to raise a DEC rather than edit that file; the file was edited on the spec that owns it, and SPEC-10 and SPEC-11 were rebased on top. SPEC-09's `test_unimplemented_condition_with_budget_raises_not_implemented` (an empty parametrisation once every condition exists) became an assertion that `IMPLEMENTED == CONDITIONS`, and its "reserved params are accepted" case uses a 64-cell grid so a 32-cell block leaves room for rings. Both are in `tests/test_geometries.py`, which SPEC-11 may touch.
+
+**Context impact.** none
+
+**Commit.** pending
