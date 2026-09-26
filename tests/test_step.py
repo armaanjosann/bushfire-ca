@@ -2,6 +2,8 @@
 SPEC-03.
 """
 
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -12,6 +14,7 @@ from src.model import (
     FUEL,
     NEIGHBOURS,
     Config,
+    RunResult,
     initial_grids,
     run_fire,
     wind_weights,
@@ -187,12 +190,13 @@ def test_capture_scar_true_ignition_step_matches_scar():
     assert result.ignition_step[iy, ix] == 0
 
 
-def test_derived_fields_default_none():
-    cfg = Config(L=64, p=0.5, seed=0)
-    result = run_fire(cfg)
-    assert result.burned_fraction is None
-    assert result.burned_fraction_of_fuel is None
-    assert result.spanned is None
-    assert result.reached_edge is None
-    assert result.settlement_reached is None
-    assert result.settlement_reached_step is None
+def test_derived_fields_dataclass_defaults_are_none():
+    # The RunResult *declaration* defaults the derived fields to None
+    # (SPEC-03). run_fire itself populates them since SPEC-04 (DEC-006,
+    # DEC-021) — that behaviour is tested in tests/test_metrics.py.
+    fields = {f.name: f.default for f in dataclasses.fields(RunResult)}
+    for name in (
+        "burned_fraction", "burned_fraction_of_fuel", "spanned",
+        "reached_edge", "settlement_reached", "settlement_reached_step",
+    ):
+        assert fields[name] is None
