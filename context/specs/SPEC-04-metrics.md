@@ -1,13 +1,13 @@
 ---
 id: SPEC-04
 title: Metrics and scar statistics
-status: not started
+status: in progress
 owner: Armaan
 reviewer: Aaron
 phase: P1 — Model core (Sprint 1)
 depends_on: [SPEC-03]
 implements: [§4.3, §3.5, §3.6]
-issue:
+issue: "#4"
 branch: spec/SPEC-04-metrics
 pr:
 decisions: [DEC-006, DEC-007]
