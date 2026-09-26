@@ -10,7 +10,7 @@ implements: [§6.2 Exp 3, §6.2 Exp 4, §10.1 D3, §7 I11]
 issue:
 branch: spec/SPEC-16-experiments-3-4
 pr:
-decisions: []
+decisions: [DEC-003, DEC-008, DEC-011, DEC-015]
 ---
 
 # SPEC-16 — Experiments 3 and 4, and frame invariance
@@ -30,7 +30,7 @@ decisions: []
 **In scope**
 
 - **Experiment 3:** `STUDY`, `kappa ∈ {0, 1, 2, 4}` × 7 conditions at `b = 0.15`, `p_rel = +0.05`, `L = 256`, R = 200, `random_cell` ignition, settlement on.
-- **Experiment 4:** `STUDY`, `f_treat ∈ {0, .2, .4}` × `beta ∈ {.7, .8, .9}`, reduced condition set, `random_cell`, settlement on.
+- **Experiment 4:** `STUDY`, `f_treat ∈ {0, .2, .4}` × `beta ∈ {.7, .8, .9}`, reduced condition set, `kappa = 2`, `random_cell`, settlement on. It uses one **absolute** `p` = the Experiment 0b `kappa = 2` threshold + 0.05, resolved once and held fixed across every `beta` and `f_treat` cell, with `p_rel` null (§6.2, DEC-011).
 - **I11:** at `b = 0.15`, `p_rel = +0.05`, `kappa = 2`, `L = 256`, R = 200, compare the `strips_perp − strips_para` gap at `phi = 0` against `phi = π/4` with the geometry rotated to match.
 - Wiring `run.py --exp 3` and `--exp 4`.
 
@@ -38,7 +38,7 @@ decisions: []
 
 - Sweeping `phi` as an experimental dimension — §10.1 D3 resolved this to a single verification check. Do not add an axis.
 - Figures — SPEC-17.
-- Any change to a geometry generator to support rotation. If `strips_perp` at `phi = π/4` does not already produce bands perpendicular to the wind, that is a SPEC-10 defect — **raise a DEC**, do not patch it here.
+- Any change to a geometry generator to support rotation. If `strips_perp` at `phi = π/4` does not already produce bands perpendicular to the wind, that is a SPEC-10 defect (SPEC-10 requires and tests it, DEC-008) — **raise a DEC**, do not patch it here.
 
 ## Files
 
@@ -62,7 +62,9 @@ No new interface. Uses `run_configs` (SPEC-05) and `resolve_p` (SPEC-06).
 
 - Experiment 3 is SQ1 in full: is the ranking of treatment arrangements wind-dependent? Settlement is on, so both the landscape-scale and asset-scale responses are available across `kappa`.
 - Experiment 4 exists to show the conclusions are not artefacts of fixed parameter choices. Keep the condition set reduced — it is a sensitivity check, not a second main experiment.
-- `p_rel = +0.05` resolves through `resolve_p` against the untreated `STUDY` threshold **at the matching `kappa`** (§6.1, §2 O4). Experiment 3 sweeps `kappa`, so this is four different thresholds, not one. That is the single most likely error in this spec.
+- `p_rel = +0.05` resolves through `resolve_p` against the untreated `STUDY` threshold **at the matching `kappa`** (§6.1, §2 O4). Experiment 3 sweeps `kappa`, so this is four different thresholds, not one: the four Experiment 0b rows from SPEC-19. That is the single most likely error in this spec.
+- Experiment 4 deliberately does **not** re-centre on a threshold for each `beta`. The check asks how outcomes move when `beta` changes on the same landscape (§6.2 note, DEC-011). The threshold is a `beta=0.8` value, so do not write `p_rel` on these rows.
+- Settlement runs set `geometry_params["settlement_side"]` explicitly to the frozen `SETTLEMENT_SIDE` (§3.6, DEC-015).
 - **I11 has two reportable outcomes and neither costs an axis** (§10.1 D3): overlapping confidence intervals on the two gaps ⟹ one line in Methods stating the frame-invariance check passed; non-overlapping ⟹ a *measured* lattice artefact with a magnitude attached, which goes in Limitations. Write the test to report the magnitude either way, not merely to pass.
 
 ## Acceptance criteria
@@ -71,6 +73,7 @@ No new interface. Uses `run_configs` (SPEC-05) and `resolve_p` (SPEC-06).
 - [ ] Experiment 3 rows at each `kappa` resolved `p` against that `kappa`'s threshold — verified by comparing `p` to the `pc_estimates.parquet` row per `kappa`.
 - [ ] Experiment 3 covers all four `kappa` values × seven conditions at `b = 0.15`.
 - [ ] Experiment 4 covers the full `f_treat × beta` cross at the declared reduced condition set.
+- [ ] Every Experiment 4 row has the same `p`, equal to the `kappa = 2` Experiment 0b `fss_crossing` value + 0.05, with `p_rel` null and `kappa == 2`.
 - [ ] `results/i11_frame.parquet` exists with both `phi` arms at R = 200.
 - [ ] `test_i11` reports the two gaps, their confidence intervals, and whether they overlap — and the PR body states which outcome was observed.
 - [ ] `settlement_reached` is non-null throughout both experiments.

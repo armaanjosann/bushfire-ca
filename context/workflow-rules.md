@@ -86,13 +86,13 @@ Do not:
 
 - touch a file outside the spec's **may touch** list
 - refactor, rename, reformat or otherwise improve anything the spec did not ask for
-- **add a dependency.** The model is Python + NumPy only — no numba, no Cython, no torch, nothing in the step function beyond NumPy. `matplotlib`, `pandas`/`pyarrow` and `pytest` are the only others in the project.
+- **add a dependency.** The model is Python + NumPy only — no numba, no Cython, no torch, nothing in the step function beyond NumPy. `matplotlib`, `pandas`/`pyarrow`, `pytest` and — for the presentation layer only — `jupyter`/`ipykernel` (DEC-016) are the only others in the project.
 - change the results schema (§5), the module signatures (§4), or the invariants (§7)
 - edit another spec, or change any status other than your own spec's
 - resolve an open item in `project-context.md` §10
 - use module-level `np.random` or any global mutable state
 - mutate or overwrite a parquet file already committed (§9)
-- commit generated figures unless the spec explicitly asks for them
+- commit generated figures unless the spec explicitly asks for them. **Exception:** `notebooks/*.ipynb` are committed *with* their outputs stored (DEC-017). `figures/out/` stays gitignored.
 
 ## 8. Git
 
@@ -111,7 +111,7 @@ Do not:
 - Commit only runs that back a reported figure or a validation claim. Delete exploratory and scratch runs first.
 - Expected total is roughly 10–20 MB across all experiments. If a single file exceeds 50 MB, stop and raise it — that means something is being written per-replicate that should not be.
 - Never bulk-commit `scar` arrays (§4.1). Illustrative scars only, and only where a spec asks for them.
-- `figures/make_figures.py` reads from `results/` and nothing else, and must never call `run_fire`.
+- `figures/make_figures.py` reads from `results/` and nothing else, and must never call `run_fire`. Notebooks consume its `FIGURES` registry; `notebooks/01` alone may call `run_fire`, in one seeded cell at `L <= 128`, labelled as a demonstration and feeding no reported quantity (DEC-018).
 
 ## 10. For the two of us — not for agents
 

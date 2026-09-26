@@ -1,7 +1,7 @@
 ---
 id: SPEC-01
 title: Repo skeleton, entry point, and model contracts
-status: not started
+status: in review
 owner: Aaron
 reviewer: Armaan
 phase: P0 — Foundation (Sprint 1)
@@ -10,7 +10,7 @@ implements: [§9, §4.7, §4.1, §4.4, §3.4, §8]
 issue:
 branch: spec/SPEC-01-foundation
 pr:
-decisions: []
+decisions: [DEC-002]
 ---
 
 # SPEC-01 — Repo skeleton, entry point, and model contracts
@@ -87,18 +87,18 @@ Returning all-False for `n_treat == 0` **before touching `rng`** is the I6 contr
 
 ## Acceptance criteria
 
-- [ ] `pytest` collects and runs; `test_i1` … `test_i11` are present and reported as xfail.
-- [ ] Every case in §4.4 has a test asserting `Config(...)` raises.
-- [ ] `wind_weights(0.0, 0.0, False)` is `np.ones(8)`.
-- [ ] `wind_weights(k, phi, d).mean() == 1` to within 1e-12 for a sample across `k ∈ {0,1,2,4}`, `phi ∈ {0, π/4, π/2}`, `d ∈ {True, False}`.
-- [ ] With `diagonal_factor=True` and `kappa=0`, the four diagonal weights equal each other and are smaller than the four axial weights.
-- [ ] `python run.py --exp 0` exits non-zero with a `NotImplementedError` naming SPEC-07.
-- [ ] `python -c "import src.model, src.geometries, src.metrics, src.experiments, src.analysis, figures.make_figures"` succeeds.
-- [ ] No dependency outside numpy, matplotlib, pandas, pyarrow, pytest.
+- [x] `pytest` collects and runs; `test_i1` … `test_i11` are present and reported as xfail.
+- [x] Every case in §4.4 has a test asserting `Config(...)` raises.
+- [x] `wind_weights(0.0, 0.0, False)` is `np.ones(8)`.
+- [x] `wind_weights(k, phi, d).mean() == 1` to within 1e-12 for a sample across `k ∈ {0,1,2,4}`, `phi ∈ {0, π/4, π/2}`, `d ∈ {True, False}`.
+- [x] With `diagonal_factor=True` and `kappa=0`, the four diagonal weights equal each other and are smaller than the four axial weights.
+- [x] `python run.py --exp 0` exits non-zero with a `NotImplementedError` naming SPEC-07.
+- [x] `python -c "import src.model, src.geometries, src.metrics, src.experiments, src.analysis, figures.make_figures"` succeeds.
+- [x] No dependency outside numpy, matplotlib, pandas, pyarrow, pytest.
 
 ## Invariants
 
-- [ ] None owned. This spec **creates** the I1–I11 placeholder file so that an unowned invariant shows up as a permanently-failing test rather than as an absence.
+- [x] None owned. This spec **creates** the I1–I11 placeholder file so that an unowned invariant shows up as a permanently-failing test rather than as an absence.
 
 ## Verification
 
@@ -111,11 +111,11 @@ git check-ignore -v results/.gitkeep; echo "expect: no match (results is tracked
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR (none needed — no contract changed)
+- [x] `status` updated in this file and in `progress-tracker.md`
 - [ ] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 

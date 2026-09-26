@@ -126,7 +126,7 @@ w_d   = raw_d / mean(raw)          # normalised so mean over the 8 directions ==
 
 | Mode | Definition | Used by | Reported metric |
 |---|---|---|---|
-| `"edge"` | every `FUEL` cell in row 0 is set `BURNING` at `t=0` | Exp 0 only | `spanned` — did any cell in row `L-1` burn |
+| `"edge"` | every `FUEL` cell in row 0 is set `BURNING` at `t=0` | threshold sweeps only: Exp 0, 0b, 2 | `spanned` — did any cell in row `L-1` burn |
 | `"random_cell"` | one `FUEL` cell chosen uniformly at random (settlement-adjacent cells are eligible; `EMPTY` cells are not) | all other experiments | `reached_edge` — did any cell in any of the four edge rows/columns burn |
 
 `spanned` is meaningless under `"random_cell"` and must be written as `null`, not `False`. Likewise `reached_edge` under `"edge"` is trivially true and must be `null`. Record `ignition_y`, `ignition_x` for `"random_cell"` (`null` for `"edge"`).
@@ -139,6 +139,7 @@ Used only when `settlement=True` (Experiment 1 and 3; omit elsewhere to save tim
 
 - A single filled square block of side `SETTLEMENT_SIDE`, centred at `(L//2, L//2)`, cells set to state `SETTLEMENT`. **`SETTLEMENT_SIDE` is provisionally 16 at `L=256`; the binding value is fixed by the pilot in §10.2 O1 before Experiment 1 runs at full replicates.**
 - Settlement cells have `f = 0`, never burn, never propagate. They act as a hole in the fuel bed.
+- The side may be set per run through `geometry_params["settlement_side"]` (int), defaulting to `SETTLEMENT_SIDE` when absent. Placement, the settlement ring and the `buffer` generator all read the resolved value; this is how the §10.2 O1 pilot varies side without global state. Grid builders for `settlement=True` runs always set the key explicitly, so a run's `run_id` never depends on whether the default was written out; runs without a settlement omit it (DEC-007, DEC-015).
 - **`settlement_reached` is True iff any cell in the 1-cell-wide ring immediately surrounding the settlement block enters state `BURNING` at any time during the run.** Record the step at which it first happens (`settlement_reached_step`, else `null`).
 - Ignition under `"random_cell"` may occur anywhere in the fuel bed, including inside a buffer ring. Do not exclude regions — excluding them biases the comparison in favour of buffer geometries.
 
@@ -188,7 +189,9 @@ class Config:
 @dataclass
 class RunResult:
     ...        # exactly the fields in the schema of §5, minus the config echo
-    scar: np.ndarray | None = None   # final state grid, only when capture_scar=True
+    scar: np.ndarray | None = None           # final state grid, only when capture_scar=True
+    ignition_step: np.ndarray | None = None  # int32[L, L]: step each cell first became BURNING
+                                             # (0 for ignition cells), -1 if never; only when capture_scar=True
 
 def run_fire(cfg: Config, capture_scar: bool = False) -> RunResult: ...
 def wind_weights(kappa: float, phi: float, diagonal_factor: bool) -> np.ndarray: ...  # shape (8,)
@@ -197,7 +200,7 @@ def initial_grids(cfg: Config, rng) -> tuple[np.ndarray, np.ndarray]: ...       
 
 `run_fire` is pure with respect to `(cfg)`: same config, same result, always. It creates its own `np.random.default_rng(cfg.seed)` internally and must not accept an external generator — that is what makes the determinism test in §7 possible.
 
-`scar` is returned only when explicitly requested. **Never store scars for a full sweep** — 78k grids at `256²` is far too much. Capture them for a hand-picked handful of illustrative configurations only.
+`scar` and `ignition_step` are returned only when explicitly requested. `ignition_step` exists for the space-time view of the illustrative scars (DEC-013). It is never written to a parquet, so the §5 rule against `-1` sentinels does not apply to it. **Never store scars for a full sweep** — 78k grids at `256²` is far too much. Capture them for a hand-picked handful of illustrative configurations only.
 
 ### 4.2 `src/geometries.py`
 
@@ -251,13 +254,13 @@ Fail loudly at construction. A silently mis-specified regime produces plausible-
 ### 4.6 `src/analysis.py`
 
 - `estimate_pc(df, condition, regime) -> (p_c, stderr)` — from the crossing of `P(span)` or `P(reached_edge)` across `L`, cross-checked against the peak of `Var(burned_fraction)`.
-- Writes `results/pc_estimates.parquet` with columns `regime, condition, b, kappa, L, p_c, p_c_stderr, method`.
+- Writes `results/pc_estimates.parquet` with columns `regime, condition, b, kappa, L, p_c, p_c_stderr, method`. For each measured `(regime, condition, b, kappa)` there is one per-`L` row per lattice size (`method="var_peak"`) and exactly one `method="fss_crossing"` row with `L` null (nullable `Int32`). The crossing row is the governing threshold (DEC-004).
 - Tail fitting for burn-size distributions.
 - Asserts `truncated == False` across every input frame.
 
 ### 4.7 `run.py`
 
-Single entry point. `python run.py --exp {0,1,2,3,4,all}`. Every figure in the report must be reproducible from a clean clone with this command and nothing else.
+Single entry point. `python run.py --exp {0,0b,1,2,2b,3,4,all}`, plus the auxiliary entries the specs add (`pilot`, `1-coarse`, `scars`). `all` runs every entry needed for the report in dependency order, so `0b` runs before `1`. Every figure in the report must be reproducible from a clean clone with this command and nothing else.
 
 ---
 
@@ -310,31 +313,39 @@ Nullable integer columns use pandas nullable dtypes (`Int32`), not `-1` sentinel
 This is the single most important rule in the document.
 
 - Experiment 0 measures `p_c` under `PERCOLATION` and writes it to `results/pc_estimates.parquet`.
-- Experiment 2 measures `p_c` **per condition** under `STUDY`.
+- Experiment 0b measures the untreated (`condition="none"`, `b=0`) `STUDY` threshold at every `kappa` that a threshold-relative grid uses, `kappa ∈ {0, 1, 2, 4}`. It runs **before** the §10.2 O1 pilot and Experiment 1, because both resolve `p_rel` against it (DEC-011).
+- Experiment 2 measures `p_c` **per treated condition** under `STUDY`. Its untreated reference is Experiment 0b's `kappa=0` row, not a rerun.
 - Experiments whose grids are specified relative to a threshold (`p_c - 0.05`, `p_c`, `p_c + 0.05`) resolve that offset **at config-build time** by reading the relevant row from `pc_estimates.parquet`. The resolved absolute `p` goes in the `p` column and the offset in `p_rel`.
 - If `pc_estimates.parquet` is missing or lacks the needed row, **raise**. Do not fall back to `P_C_LITERATURE`.
 - `P_C_LITERATURE = 0.407` is used in exactly one place: an assertion in Experiment 0's validation that the measured value is within a tolerance of it.
 
-The governing `p_c` for a `STUDY` experiment is the untreated (`condition="none"`, `b=0`) `STUDY` threshold at the matching `kappa`, unless the experiment explicitly says otherwise.
+The governing `p_c` for a `STUDY` experiment is the untreated (`condition="none"`, `b=0`) `STUDY` threshold at the matching `kappa` (the `fss_crossing` row that Experiment 0b writes), unless the experiment explicitly says otherwise. All `STUDY` thresholds are measured at `beta=0.8`, `f_treat=0.2`. An experiment that varies `beta` does not resolve `p_rel` (see Experiment 4).
+
+**Edge-ignition wind convention.** `STUDY` threshold sweeps (Experiments 0b and 2) use `phi = -π/2`, so the wind blows from row 0 towards row `L-1` and the ignited edge (§3.5) is the upwind edge. A 90° rotation of the lattice is an exact symmetry of the rule: the Moore neighbourhood, the diagonal factor and the von Mises kernel all rotate with it. So for untreated fuel, the threshold measured at `phi = -π/2` is exactly the threshold at `phi = 0`, and `pc_estimates.parquet` needs no `phi` column. Experiment 2b keeps `phi = -π/2` from Experiment 2, so its treated geometries are the same ones whose threshold was measured.
 
 ### 6.2 Grid
 
 | # | Name | Grid | Ignition | Settlement |
 |---|---|---|---|---|
 | 0 | Validation | `PERCOLATION`; `p` ∈ [0.30, 0.60] step 0.005; `L` ∈ {128, 256, 512}; R=500 | `edge` | no |
+| 0b | Study baseline threshold | `STUDY`; `condition="none"`, `b`=0; `kappa` ∈ {0, 1, 2, 4}; `phi`=−π/2; fine `p` sweep per `kappa`, declared in the builder: ±0.05 at step 0.005 around a centre located by an `L`=128 pre-pass; `L` ∈ {128, 256, 512}; R=500 | `edge` | no |
 | 1 | Geometry × budget | `STUDY`; 12 condition-levels (see note below) × `b` ∈ {0, .05, .10, .15, .20, .25, .30} × `p_rel` ∈ {−0.05, 0, +0.05} plus absolute `p=0.70` × `kappa` ∈ {0, 2}; `L`=256; R=200 | `random_cell` | yes |
-| 2 | Threshold shift | `STUDY`; best 3 conditions at `b`=0.15, plus `none`; fine `p` sweep; `L` ∈ {128, 256, 512}; R=500 | `edge` | no |
-| 2b | Tail statistics | `STUDY`; `p` = measured per-condition `p_c` from Exp 2; conditions `none`, `random`, best clustered, `strips_perp`; `b`=0.15; `L`=256; R=10,000 | `random_cell` | no |
+| 2 | Threshold shift | `STUDY`; `kappa`=0, `phi`=−π/2; at `b`=0.15: `random`, the best `patches` level and the best `strips_perp` level from Exp 1 (selection rule below); fine `p` sweep, declared in the builder; `L` ∈ {128, 256, 512}; R=500. Untreated reference is Exp 0b at `kappa=0`, not rerun | `edge` | no |
+| 2b | Tail statistics | `STUDY`; `kappa`=0, `phi`=−π/2; `none` at `b`=0 with `p` = Exp 0b `kappa=0` `p_c`; `random`, best `patches` level, best `strips_perp` level at `b`=0.15, each with `p` = its own Exp 2 `p_c`; `L`=256; R=10,000 | `random_cell` | no |
 | 3 | Wind interaction | `STUDY`; `kappa` ∈ {0,1,2,4} × 7 conditions at `b`=0.15, `p_rel`=+0.05; `L`=256; R=200 | `random_cell` | yes |
-| 4 | Sensitivity | `STUDY`; `f_treat` ∈ {0, .2, .4} × `beta` ∈ {.7, .8, .9}, reduced condition set | `random_cell` | yes |
+| 4 | Sensitivity | `STUDY`; `f_treat` ∈ {0, .2, .4} × `beta` ∈ {.7, .8, .9}, reduced condition set; `kappa`=2; **absolute** `p` = Exp 0b `p_c` at `kappa=2` + 0.05, resolved once and held fixed across every `beta` (`p_rel` null) | `random_cell` | yes |
 
-Note Experiment 2 uses **edge** ignition: estimating a percolation threshold requires a spanning measure, which point ignition cannot provide. This differs from Experiment 1 by design.
+**Experiment 2 selection rule, fixed before Experiment 1 runs.** "Best" means the lowest mean `burned_fraction` in Experiment 1 at `b=0.15`, `p_rel=+0.05`, `kappa=0`. It is chosen separately among the three `patches` levels and among the three `strips_perp` levels. Experiment 2 therefore measures at most one level per condition family, which keeps the `(regime, condition, b, kappa)` key of `pc_estimates.parquet` unique (DEC-012).
+
+**Experiment 4 holds `p` fixed across `beta` on purpose.** A sensitivity check asks how outcomes move when `beta` changes on the same landscape, so it does not re-centre on a threshold specific to each `beta` (DEC-011).
+
+Note Experiments 0b and 2 use **edge** ignition: estimating a percolation threshold requires a spanning measure, which point ignition cannot provide. This differs from Experiment 1 by design.
 
 The 12 condition-levels are: `none`, `random`, `patches(k=4)`, `patches(k=8)`, `patches(k=16)`, `strips_perp(w=4)`, `strips_perp(w=8)`, `strips_perp(w=16)`, `strips_para(w=4)`, `strips_para(w=8)`, `strips_para(w=16)`, and `buffer` where a settlement exists. (`none` only appears at `b=0`, so the effective count varies by budget.) Sweeping `w` alongside `patches`' `k` is what makes the clustering-scale axis (§11) continuous across both geometry families rather than three points plus two isolated ones — see §10.1 D2.
 
 ### 6.3 Compute
 
-Measured on a single throttled cloud core with an unoptimised kernel: ~44 ms/run at `L=128`, ~760 ms at `L=256`, ~8 s at `L=512`. Experiment 1 at 12 condition-levels is therefore ~28 core-hours worst case — still under two hours across 16 cores, and considerably less once the optimisations in §8 land. Experiment 2b adds ~8 core-hours (~35 minutes across 16 cores). No HPC is required for the grid as specified.
+Measured on a single throttled cloud core with an unoptimised kernel: ~44 ms/run at `L=128`, ~760 ms at `L=256`, ~8 s at `L=512`. Experiment 1 at 12 condition-levels is therefore ~28 core-hours worst case — still under two hours across 16 cores, and considerably less once the optimisations in §8 land. Experiment 2b adds ~8 core-hours (~35 minutes across 16 cores). Experiment 0b costs ~26 core-hours per `kappa` arm for a 21-point sweep, dominated by `L=512`. Four arms come to ~103 core-hours, ~6.5 hours across 16 cores, and the `L=128` pre-pass is negligible. Experiment 2 at three treated conditions is ~77 core-hours. Both are overnight runs, and runs near the threshold may be slower than these averages. No HPC is required for the grid as specified.
 
 ---
 
@@ -344,7 +355,7 @@ Implement these as an actual test suite, not as prose. Several are also report f
 
 | # | Invariant | Test |
 |---|---|---|
-| I1 | **Percolation limit.** `PERCOLATION` regime reproduces the known threshold. | Measured `p_c` at `L=512` within 0.01 of `P_C_LITERATURE`. |
+| I1 | **Percolation limit.** `PERCOLATION` regime reproduces the known threshold. | The `fss_crossing` `p_c` (crossing across `L ∈ {128, 256, 512}`) within 0.01 of `P_C_LITERATURE`. The `L=512` `var_peak` value is reported alongside as a cross-check, not asserted (DEC-014). |
 | I2 | **Determinism.** Same config ⟹ identical result. | Run any config twice; every schema field equal. |
 | I3 | **Deterministic front shape.** `p=1, beta=1, kappa=0, diagonal_factor=False`: front is square, expanding 1 cell/step in Chebyshev distance. With `diagonal_factor=True` the front is not square — assert Chebyshev growth only in the False case. |
 | I4 | **Isotropy.** `kappa=0`: burn scars statistically isotropic. | Second moment of scar shape, x vs y, equal within CI over ≥200 replicates. |
@@ -376,7 +387,7 @@ I6 deserves emphasis: the natural way to write a geometry generator draws from `
 
 ```
 CLAUDE.md              # agent entry point; points at context/
-run.py                 # single entry point: python run.py --exp 0|1|2|2b|3|4|all
+run.py                 # single entry point: python run.py --exp 0|0b|1|2|2b|3|4|all
 context/
   workflow-rules.md    # how work is done here — binding on agents
   project-context.md   # this file — the specification
@@ -393,6 +404,10 @@ src/
   analysis.py     # p_c estimation, FSS, tail fitting, assertions
 figures/
   make_figures.py # every report figure, reading only from results/
+notebooks/
+  01-model-and-validation.ipynb     # model walkthrough, live demo, Exp 0 validation
+  02-treatment-geometries.ipynb     # the contribution: geometry, budget, SQ4
+  03-thresholds-and-tails.ipynb     # threshold shift, tail fits, sensitivity
 tests/
   test_invariants.py   # I1-I11
 results/          # parquet, one row per run — tracked in git, append-only
@@ -400,6 +415,8 @@ report/
 ```
 
 `figures/make_figures.py` reads from `results/` and nothing else. It must never call `run_fire`.
+
+Notebooks are the **presentation layer over that script**, not a second source of figures: they import the `FIGURES` registry and add prose, equations and interpretation (DEC-016). They are committed **with outputs stored**, executed top to bottom with sequential execution counts — an explicit exception to `workflow-rules.md` §7, scoped to `notebooks/*.ipynb`; `figures/out/` stays gitignored (DEC-017). `notebooks/01-model-and-validation.ipynb` may call `run_fire` in exactly one cell, bounded at `L <= 128`, seeded and labelled as a demonstration, feeding no reported quantity; notebooks `02` and `03` may not call it at all (DEC-018).
 
 ---
 
@@ -437,7 +454,7 @@ The constraint runs the other way instead: because O4 in §2 means this threshol
 
 `SETTLEMENT_SIDE = 16` at `L = 256` is 0.4% of the lattice by area and is unvalidated in both directions. Too small and `settlement_reached` saturates near 0 or 1 and cannot discriminate between geometries, which kills SQ4; too large and the settlement is a hole big enough to distort the fuel bed and shift the effective occupancy.
 
-*Pilot* — ~800 runs, well under half an hour: side ∈ {8, 16, 32, 48} × `kappa` ∈ {0, 2}, at `b = 0`, `condition = "none"`, `p_rel = +0.05`, `L = 256`, R = 50.
+*Pilot* — ~800 runs, well under half an hour: side ∈ {8, 16, 32, 48} × `kappa` ∈ {0, 2}, at `b = 0`, `condition = "none"`, `p_rel = +0.05` (resolved against Experiment 0b at the matching `kappa`), `L = 256`, R = 50.
 
 *Decision rule, fixed before the pilot runs:*
 
@@ -451,7 +468,7 @@ The chosen value is then written into §3.6 as a constant with this justificatio
 
 This one genuinely cannot be decided now. Sizing a tail fit requires knowing whether the distribution is heavy-tailed at all, roughly where `x_min` sits, and how far the finite-size cutoff intrudes at `L = 256` — none of which exist before Experiment 2. What *is* decided now is the protocol, so that the choice is not made under deadline pressure while looking at the answer:
 
-> **Experiment 2b.** `STUDY`, `L = 256`, `random_cell` ignition, no settlement, `b = 0.15`. `p` set to the measured per-condition `p_c` from Experiment 2 — a threshold is a property of the rule and the lattice, not of the ignition mode, so an edge-ignition estimate is the correct `p` for point-ignition tail runs. Conditions: `none`, `random`, the best-performing clustered condition from Experiment 1, and `strips_perp`. R = 10,000. Fit by maximum likelihood with `x_min` chosen by KS distance (Clauset–Shalizi–Newman), and **report the exponent together with the fitted cutoff** — SQ3 asks whether treatment truncates the tail or changes its exponent, and a fit with no cutoff term cannot distinguish the two.
+> **Experiment 2b.** `STUDY`, `L = 256`, `random_cell` ignition, no settlement, `kappa = 0`, `phi = −π/2`, `b = 0.15` for treated conditions. `p` set to the measured per-condition `p_c` from Experiment 2 (Experiment 0b for `none`) — a threshold is a property of the rule and the lattice, not of the ignition mode, so an edge-ignition estimate is the correct `p` for point-ignition tail runs. Conditions: `none` at `b = 0`, then `random`, the best `patches` level and the best `strips_perp` level from Experiment 1. These are exactly the three treated conditions Experiment 2 measures (§6.2 selection rule, DEC-012). R = 10,000. Fit by maximum likelihood with `x_min` chosen by KS distance (Clauset–Shalizi–Newman), and **report the exponent together with the fitted cutoff** — SQ3 asks whether treatment truncates the tail or changes its exponent, and a fit with no cutoff term cannot distinguish the two.
 
 Cost is ~8 core-hours, about 35 minutes across 16 cores, so Experiment 2b is scheduled in Sprint 3 unconditionally rather than treated as optional. Experiment 1 stays at R = 200: that is correctly sized for confidence intervals on the *mean*, and inflating it would not serve a tail fit anyway.
 

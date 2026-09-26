@@ -10,7 +10,7 @@ implements: [§4.2]
 issue:
 branch: spec/SPEC-09-geometry-framework
 pr:
-decisions: []
+decisions: [DEC-007, DEC-008]
 ---
 
 # SPEC-09 — Geometry framework, `none`, `random`
@@ -70,6 +70,8 @@ Three contracts that every generator in SPEC-09, SPEC-10 and SPEC-11 must satisf
 - **Placement.** A generator never marks a non-occupied cell. Assert `(mask & ~occupied).sum() == 0` before returning.
 - **Null treatment.** `n_treat == 0` returns an all-False mask for every condition, **identically** — and returns it **before touching `rng`**.
 
+Also: **reserved params** (DEC-007, DEC-008). SPEC-02's call site always passes `phi` and `settlement_side` in `**params`, alongside the condition's own parameters. `generate` and every generator must accept both keys; a generator that does not use them ignores them. `none` and `random` use neither.
+
 That last one deserves the emphasis `project-context.md` §7 gives it. The natural way to write a generator draws from `rng` even when `n_treat == 0`, which desynchronises the stream and makes the `b=0` baselines differ between conditions for no physical reason. The early return must be the first statement of every generator, and the I6 test is byte-equality of results across every condition at `b=0` on a fixed seed.
 
 ## Acceptance criteria
@@ -81,6 +83,7 @@ That last one deserves the emphasis `project-context.md` §7 gives it. The natur
 - [ ] An unknown condition string raises with a message listing the valid conditions.
 - [ ] The placement assertion is live in the shipped code, not only in tests.
 - [ ] The budget helper is shared, so SPEC-10 and SPEC-11 cannot each invent their own tolerance.
+- [ ] `generate("none" | "random", ..., phi=0.7, settlement_side=32)` returns the same mask as the call without those keys, including at `n_treat == 0` (DEC-007, DEC-008).
 
 ## Invariants
 

@@ -5,12 +5,12 @@ status: not started
 owner: Armaan
 reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
-depends_on: [SPEC-14]
+depends_on: [SPEC-14, SPEC-19]
 implements: [§6.2 Exp 2b, §10.2 O4, §4.6]
 issue:
 branch: spec/SPEC-15-tail-fitting
 pr:
-decisions: []
+decisions: [DEC-005, DEC-012]
 ---
 
 # SPEC-15 — Tail fitting and Experiment 2b
@@ -31,7 +31,9 @@ Burn-size distributions are fitted by maximum likelihood with `x_min` chosen by 
 
 - Clauset–Shalizi–Newman maximum-likelihood tail fitting in `src/analysis.py`, with `x_min` selected by KS distance.
 - Fitting an exponent **and** a cutoff term.
-- The Experiment 2b grid: `STUDY`, `L = 256`, `random_cell` ignition, no settlement, `b = 0.15`; conditions `none`, `random`, the best-performing clustered condition from Experiment 1, and `strips_perp`; `p` set per condition to the measured `p_c` from Experiment 2; R = 10,000.
+- The Experiment 2b grid (§6.2, §10.2 O4, DEC-012): `STUDY`, `L = 256`, `random_cell` ignition, no settlement, `kappa = 0`, `phi = -π/2`, R = 10,000, over four conditions:
+  - `none` at `b = 0`, with `p` = the Experiment 0b `kappa = 0` threshold (SPEC-19)
+  - `random`, `patches(k*)` and `strips_perp(w*)` at `b = 0.15`, each with `p` = its own Experiment 2 threshold. `k*` and `w*` are the levels SPEC-14 measured.
 - Applying the §10.2 O4 gate and recording its outcome in `project-context.md`.
 
 **Out of scope**
@@ -71,7 +73,7 @@ No new dependency. `powerlaw` and `scipy` are not in the project's allowed set �
 
 ## Behaviour
 
-- `p` for each condition is that condition's **measured `p_c` from Experiment 2**, read from `pc_estimates.parquet`. A threshold is a property of the rule and the lattice, not of the ignition mode, so an edge-ignition estimate is the correct `p` for point-ignition tail runs (§10.2 O4). Do not re-estimate it here.
+- `p` for each condition is that condition's **measured threshold**, read through `resolve_p(0.0, ...)` from its `fss_crossing` row (DEC-004). For treated conditions the key is `(STUDY, condition, 0.15, 0)` from Experiment 2; for `none` it is `(STUDY, none, 0, 0)` from Experiment 0b. Read `k*` and `w*` from `results/exp2.parquet`'s `geometry_params`, never re-select them. `phi = -π/2` matches the orientation under which those thresholds were measured (§6.1). A threshold is a property of the rule and the lattice, not of the ignition mode, so an edge-ignition estimate is the correct `p` for point-ignition tail runs (§10.2 O4). Do not re-estimate it here.
 - **Report the exponent together with the fitted cutoff.** SQ3 asks whether treatment truncates the tail or changes its exponent, and a fit with no cutoff term cannot distinguish the two (§10.2 O4). A result reported as an exponent alone does not answer the question it was run to answer.
 - **Gate G2.** The replicate count is the only thing still open at this point. If the fits show `x_min` sitting so high that fewer than ~2 decades of tail survive above it, raise R to 50,000 for the two headline conditions and narrow the condition set accordingly — then record the outcome in §10.2 O4 in this same PR, with a DEC entry.
 - Experiment 1 stays at R = 200 and is not inflated to serve this fit; R = 200 is correctly sized for confidence intervals on the mean (§10.2 O4).

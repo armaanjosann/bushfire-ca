@@ -10,7 +10,7 @@ implements: [§9, §10.1 D5]
 issue:
 branch: spec/SPEC-08-figure-foundation
 pr:
-decisions: [DEC-001]
+decisions: [DEC-001, DEC-016, DEC-017]
 ---
 
 # SPEC-08 — Figure foundation and the validation figure
@@ -22,7 +22,8 @@ decisions: [DEC-001]
 ## Context to read
 
 - `workflow-rules.md` — especially §7 (do not commit generated figures unless asked) and §9
-- `project-context.md` §9 (`make_figures.py` reads from `results/` and nothing else), §10.1 D5, §6.1, §4.6
+- `project-context.md` §9 (`make_figures.py` reads from `results/` and nothing else; the notebook clause), §10.1 D5, §6.1, §4.6
+- `decisions-log.md` — DEC-016, DEC-017 (notebooks consume this registry)
 - `checkpoint1-bushfire-ca-roadmap.md` §5 Exp 0, §13
 
 ## Scope
@@ -61,6 +62,8 @@ def build(name: str, outdir: str = "figures/out") -> str: ...
 def build_all(outdir: str = "figures/out") -> list[str]: ...
 ```
 
+**Builders must return the `Figure`, not `None`, and must not write to disk themselves** — only `build()` writes. SPEC-20 and SPEC-21 display these figures inline in notebooks by calling `FIGURES[name]()` directly (DEC-016), so a builder that saves-and-closes instead of returning breaks the notebooks. This is the one property of the registry the notebook specs depend on.
+
 ## Behaviour
 
 - Every builder reads from `results/` and returns a figure. No simulation, no `run_fire`, no recomputation of a threshold.
@@ -74,8 +77,8 @@ def build_all(outdir: str = "figures/out") -> list[str]: ...
 - [ ] `grep -n "run_fire" figures/make_figures.py` returns nothing.
 - [ ] The figure shows three `L` curves, the crossing, and the literature marker, each labelled.
 - [ ] The builder raises a clear error if `results/exp0.parquet` or `results/pc_estimates.parquet` is missing, rather than producing an empty plot.
-- [ ] Re-running the builder twice produces byte-identical output.
-- [ ] A test asserts the registry is non-empty and every registered builder is callable.
+- [ ] Re-running the builder twice produces byte-identical **figure files**. (Notebook files are excluded — their metadata is never byte-stable, DEC-017.)
+- [ ] A test asserts the registry is non-empty, every registered builder is callable, and every builder returns a `Figure`.
 
 ## Invariants
 
@@ -103,5 +106,5 @@ pytest -q tests/test_figures.py
 
 - **Gate G0 closes here.** Sprint 1 is done when this figure exists. If it does not by the Sunday sync, P3 starts anyway but the validation claim is unproven and everything downstream is provisional.
 - Gate G−1 is cleared (DEC-001): the facilitator accepted percolation as the baseline, so this figure is the agreed replication deliverable rather than a provisional one.
-- Deciding the shared style now is worth an hour — SPEC-17 produces eight or more figures and restyling them at the end of Sprint 3 is exactly the kind of work that gets skipped and shows.
+- Deciding the shared style now is worth an hour — SPEC-17 produces eight or more figures and restyling them at the end of Sprint 3 is exactly the kind of work that gets skipped and shows. The style also has to read well inline in a notebook (DEC-016), so check one figure in Jupyter before settling it.
 - This figure is the unit's replication deliverable made visible (roadmap §13). It is the one figure that is certain to be in the report.

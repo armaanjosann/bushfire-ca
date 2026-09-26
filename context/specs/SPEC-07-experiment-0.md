@@ -10,14 +10,14 @@ implements: [§6.2 Exp 0, §6.1, §1]
 issue:
 branch: spec/SPEC-07-experiment-0
 pr:
-decisions: [DEC-001]
+decisions: [DEC-001, DEC-004, DEC-014]
 ---
 
 # SPEC-07 — Experiment 0: percolation validation run
 
 ## Objective
 
-`results/exp0.parquet` exists, and the measured `p_c` under the `PERCOLATION` regime at `L=512` is within 0.01 of `P_C_LITERATURE`. This is the project's replication deliverable.
+`results/exp0.parquet` exists, and the finite-size-scaling crossing estimate of `p_c` under the `PERCOLATION` regime is within 0.01 of `P_C_LITERATURE` (§7 I1, DEC-014). This is the project's replication deliverable.
 
 ## Context to read
 
@@ -64,21 +64,21 @@ No new interface. Uses `run_configs` (SPEC-05) and `estimate_pc` / `write_pc_est
 - The `PERCOLATION` settings are fixed by §1 and enforced by §4.4: `beta=1.0`, `kappa=0.0`, `diagonal_factor=False`, `b=0`, `tau=1`, `ignition="edge"`. **Changing any of them breaks the exact reduction to site percolation and destroys the validation.** Build the grid so that §4.4 would reject anything else.
 - Under these settings the model reduces exactly to site percolation on a Moore-neighbourhood square lattice, so the burned region is precisely the connected cluster containing the ignition. That is the claim the figure in SPEC-08 asserts.
 - `P_C_LITERATURE = 0.407` is used **here and nowhere else** (§6.1): the I1 assertion that the measured value is within tolerance of it. It is never a grid value and never a substitute for a measured `p_c`.
-- Rows land in `pc_estimates.parquet` with `regime="PERCOLATION"`, `condition="none"`, `b=0`, `kappa=0`. Under §2 O4 these govern no `STUDY` run.
+- Rows land in `pc_estimates.parquet` with `regime="PERCOLATION"`, `condition="none"`, `b=0`, `kappa=0`, using SPEC-06's row identity (DEC-004). Under §2 O4 these govern no `STUDY` run.
 
 ## Acceptance criteria
 
 - [ ] `python run.py --exp 0` produces `results/exp0.parquet` with 91,500 rows (61 × 500 × 3) and `truncated == False` throughout.
 - [ ] Every row has `regime == "PERCOLATION"`, `beta == 1.0`, `kappa == 0.0`, `diagonal_factor == False`, `b == 0`, `ignition == "edge"`.
 - [ ] `reached_edge` is null on every row; `spanned` is non-null on every row.
-- [ ] Three rows are appended to `pc_estimates.parquet`, one per `L`, plus the FSS crossing estimate.
-- [ ] The measured `p_c` at `L=512` is within 0.01 of 0.407.
+- [ ] Four rows are appended to `pc_estimates.parquet` (DEC-004): three per-`L` rows (`method="var_peak"`, `L` ∈ {128, 256, 512}) and one `method="fss_crossing"` row with `L` null.
+- [ ] The `fss_crossing` row is within 0.01 of 0.407, as I1 is worded in `project-context.md` §7 (DEC-014). The `L=512` `var_peak` value is reported alongside it as a cross-check and is not asserted.
 - [ ] `P(span)` is monotonically increasing in `p` within noise at each `L`.
 - [ ] `code_version` on every row is a real short SHA.
 
 ## Invariants
 
-- [ ] **I1 percolation limit** — measured `p_c` at `L=512` within 0.01 of `P_C_LITERATURE`.
+- [ ] **I1 percolation limit** — the `fss_crossing` `p_c` across `L ∈ {128, 256, 512}` within 0.01 of `P_C_LITERATURE` (DEC-014).
 
 ## Verification
 

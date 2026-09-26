@@ -5,12 +5,12 @@ status: not started
 owner: Armaan
 reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
-depends_on: [SPEC-06, SPEC-13]
+depends_on: [SPEC-06, SPEC-13, SPEC-19]
 implements: [§6.2 Exp 2, §6.1, §2 O4]
 issue:
 branch: spec/SPEC-14-experiment-2
 pr:
-decisions: []
+decisions: [DEC-003, DEC-004, DEC-005, DEC-011, DEC-012]
 ---
 
 # SPEC-14 — Experiment 2: threshold shift
@@ -22,7 +22,7 @@ Per-condition `STUDY` thresholds are measured with finite-size scaling and appen
 ## Context to read
 
 - `workflow-rules.md`
-- `project-context.md` §6.2 Exp 2 **and its note on why this experiment uses edge ignition**, §6.1, §2 O4, §4.6
+- `project-context.md` §6.2 Exp 2, **the Experiment 2 selection rule**, and the note on edge ignition; §6.1 including the **edge-ignition wind convention**; §2 O4; §4.6
 - `spec-plan.md` §6 — the uncosted compute for this experiment
 - `checkpoint1-bushfire-ca-roadmap.md` §2 (primary RQ), §5 Exp 2
 
@@ -30,10 +30,11 @@ Per-condition `STUDY` thresholds are measured with finite-size scaling and appen
 
 **In scope**
 
-- Selecting the best 3 conditions from Experiment 1, plus `none`, at `b = 0.15`.
+- Applying the §6.2 selection rule, fixed in advance (DEC-012), to Experiment 1. That picks the best `patches` level and the best `strips_perp` level.
 - **Declaring the fine `p` sweep range and step explicitly** — see Behaviour.
-- The grid: `STUDY`, those 4 conditions, `L ∈ {128, 256, 512}`, R = 500, **`edge` ignition**, no settlement.
+- The grid: `STUDY`, `kappa = 0`, `phi = -π/2`, at `b = 0.15` over three treated conditions: `random`, the selected `patches(k*)` and the selected `strips_perp(w*)`. `L ∈ {128, 256, 512}`, R = 500, **`edge` ignition**, no settlement.
 - Running it to `results/exp2.parquet` and appending per-condition rows to `pc_estimates.parquet`.
+- **No `none` arm.** The untreated reference is Experiment 0b's `kappa = 0` threshold (SPEC-19), measured with identical settings.
 
 **Out of scope**
 
@@ -61,19 +62,21 @@ No new interface. Uses `run_configs` (SPEC-05), `estimate_pc` and `write_pc_esti
 
 - **Edge ignition, by design** (§6.2 note). Estimating a percolation threshold requires a spanning measure, and point ignition cannot provide one. This differs from Experiment 1 deliberately; it is not an inconsistency to fix.
 - No settlement, since spanning is a landscape-scale measure.
-- "Best 3 conditions" means best by mean burned fraction at `b = 0.15` in Experiment 1 at the matching `kappa`. State the selection rule and the resulting three conditions in the PR body so the choice is traceable rather than post-hoc.
-- **The sweep range and step must be declared in the grid builder, not left implicit.** `project-context.md` says only "fine `p` sweep". Because Experiment 1 has already located each condition's region, the intent is a narrow sweep — roughly ±0.05 around the expected threshold at a step of 0.005, about 21 points — not a rerun of Experiment 0's range. See Notes for why this matters.
+- **Selection rule (§6.2, DEC-012), applied as written.** Take the lowest mean `burned_fraction` in Experiment 1 at `b = 0.15`, `p_rel = +0.05`, `kappa = 0`, separately among `patches(k=4,8,16)` and among `strips_perp(w=4,8,16)`. `random` is always included. Exactly one level per family is measured, which keeps the `pc_estimates` key unique, since the key has no `k`/`w` column. State the selected `k*`, `w*` and the Experiment 1 numbers behind them in the PR body.
+- **`kappa = 0`, `phi = -π/2`** (§6.1 convention). At `kappa = 0` the wind has no effect. `phi` only orients `strips_perp`, so its bands run across the spanning direction, and the settings match SPEC-19's `kappa = 0` arm apart from condition and `b`.
+- **The sweep range and step must be declared in the grid builder, not left implicit.** Centre each condition's sweep on the SPEC-19 `kappa = 0` threshold, ±0.05 at step 0.005 (21 points). Treatment only lowers fuel load, so a treated threshold is expected at or above the untreated one. If a crossing falls outside the range, shift that condition's range and rerun it; never extrapolate. See Notes for why this matters.
 - Rows land in `pc_estimates.parquet` with `regime="STUDY"` and the correct `condition`, `b` and `kappa`. Under §2 O4 these are the thresholds that govern `STUDY` runs; the `PERCOLATION` row governs nothing here and must not be compared against them in any table.
 
 ## Acceptance criteria
 
 - [ ] The grid builder declares the sweep range, step and point count as explicit constants.
 - [ ] `results/exp2.parquet` exists with `truncated == False` and unique `run_id`.
-- [ ] Every row has `ignition == "edge"`, `settlement == False`, `b == 0.15` except the `none` rows at `b == 0`.
+- [ ] Every row has `ignition == "edge"`, `settlement == False`, `b == 0.15`, `kappa == 0`, `phi == -π/2`, and `condition != "none"`.
 - [ ] `reached_edge` is null on every row; `spanned` is non-null on every row.
-- [ ] Four `STUDY` rows appear in `pc_estimates.parquet`, each with a stderr and a `method`.
+- [ ] `pc_estimates.parquet` holds exactly one `STUDY` `fss_crossing` row per `(condition, b=0.15, kappa=0)`: one `patches`, one `strips_perp`, one `random`.
+- [ ] For each of the three conditions, `pc_estimates.parquet` gains one `method="fss_crossing"` row with `L` null and three per-`L` `method="var_peak"` rows (SPEC-06 row identity, DEC-004), each with a stderr, and `resolve_p` resolves each condition's key without raising.
 - [ ] Each condition's `P(span)` curve crosses across the three `L` values, and the crossing is inside the swept range — if it is not, the range was wrong and the sweep is rerun, not extrapolated.
-- [ ] The PR body names the three selected conditions and the Experiment 1 numbers that selected them.
+- [ ] The PR body names `k*` and `w*` and the Experiment 1 numbers that selected them under the §6.2 rule.
 
 ## Invariants
 
@@ -106,6 +109,6 @@ PY
 
 ## Notes and risks
 
-- **The compute here is not small and `project-context.md` does not cost it.** Four conditions × 500 replicates × three lattice sizes is `2000n` runs per `L` for an `n`-point sweep; at `L=512` each point costs ~4.4 core-hours. A 21-point sweep is ~93 core-hours — about 5.8 hours across 16 cores, so an overnight run, not something to start on the Sunday. A 40-point sweep would be ~178 core-hours. **This is why the range must be declared rather than chosen generously.**
+- **The compute here is not small** (§6.3). Three conditions × 500 replicates × three lattice sizes is `1500n` runs per `L` for an `n`-point sweep, and at `L=512` each point costs about 3.3 core-hours. A 21-point sweep is about 77 core-hours, roughly 4.8 hours across 16 cores. That is an overnight run, not something to start on the Sunday. **This is why the range must be declared rather than chosen generously.**
 - This experiment is the crux of the primary RQ. A threshold shift is a change in the system's critical point; no shift with reduced burned area is a change in amplitude. Both are publishable answers, and the report should be written to accept either.
 - `p_c` is a property of the rule and the lattice, not of the ignition mode. That is why SPEC-15 can legitimately use these edge-ignition estimates as the `p` for its point-ignition tail runs.
