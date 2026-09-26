@@ -86,19 +86,108 @@ def test_i5():
     raise NotImplementedError
 
 
-@pytest.mark.xfail(reason="I6 null treatment lands in SPEC-09", strict=False)
-def test_i6():
-    raise NotImplementedError
+def _result_fields(result):
+    """RunResult as a dict, arrays included, for byte-equality checks."""
+    return {f.name: getattr(result, f.name) for f in dataclasses.fields(result)}
 
 
-@pytest.mark.xfail(reason="I7 budget parity lands in SPEC-09", strict=False)
-def test_i7():
-    raise NotImplementedError
+def _assert_identical(a, b, label):
+    for name, va in _result_fields(a).items():
+        vb = getattr(b, name)
+        if isinstance(va, np.ndarray):
+            assert np.array_equal(va, vb), f"{label}: field {name!r} differs"
+        else:
+            assert va == vb, f"{label}: field {name!r} differs ({va!r} != {vb!r})"
 
 
-@pytest.mark.xfail(reason="I8 treatment placement lands in SPEC-09", strict=False)
-def test_i8():
-    raise NotImplementedError
+# Every condition code path, with the geometry_params it would carry in the
+# experiments. At b=0 the params are irrelevant — generate must return
+# before reading them — which is exactly what I6 checks. SPEC-10 and
+# SPEC-11 need not touch this list: their conditions are already here.
+_I6_CONDITIONS = {
+    "none": {},
+    "random": {},
+    "patches": {"k": 8},
+    "strips_perp": {"w": 4},
+    "strips_para": {"w": 4},
+    "buffer": {},
+}
+
+
+@pytest.mark.parametrize("settlement", [False, True], ids=["open", "settlement"])
+def test_i6_null_treatment(settlement):
+    """Same seed, every condition, b=0 ⟹ byte-identical results
+    (project-context.md §7 I6). Catches a generator that draws from rng
+    before checking n_treat == 0. SPEC-09.
+
+    "buffer" requires settlement=True (§4.4), so it is compared only in the
+    settlement group; every other condition is compared in both.
+    """
+    for seed in (0, 1):
+        reference = None
+        for condition, params in _I6_CONDITIONS.items():
+            if condition == "buffer" and not settlement:
+                continue
+            cfg = Config(
+                L=64, p=0.55, kappa=2.0, condition=condition, b=0.0,
+                geometry_params=params, settlement=settlement, seed=seed,
+            )
+            result = run_fire(cfg, capture_scar=True)
+            assert result.n_treated == 0
+            if reference is None:
+                reference = result
+            else:
+                _assert_identical(
+                    result, reference, f"seed={seed} condition={condition!r}"
+                )
+
+
+def test_i7_budget_parity():
+    """n_treated within tolerance of round(b * n_occupied) for every
+    implemented condition (project-context.md §7 I7). SPEC-09.
+
+    This is the generator half of I7 — asserted live in generate and
+    checked here end-to-end through run_fire. The "again over a results
+    frame" half needs a results frame and lands with the harness (SPEC-05,
+    DEC-023).
+    """
+    from src.geometries import IMPLEMENTED, budget_tolerance
+
+    for condition in IMPLEMENTED:
+        if condition == "none":
+            continue
+        for b in (0.05, 0.10, 0.15, 0.30):
+            for p in (0.4, 0.6):
+                for seed in range(3):
+                    cfg = Config(L=64, p=p, condition=condition, b=b, seed=seed)
+                    result = run_fire(cfg)
+                    nominal = round(b * result.n_occupied)
+                    assert abs(result.n_treated - nominal) <= budget_tolerance(nominal), (
+                        f"{condition} b={b} p={p} seed={seed}: "
+                        f"n_treated={result.n_treated}, nominal={nominal}"
+                    )
+                    if condition == "random":
+                        assert result.n_treated == nominal   # exact, §4.2
+
+
+def test_i8_treatment_placement():
+    """mask & ~occupied is empty for every implemented condition
+    (project-context.md §7 I8). SPEC-09."""
+    from src.geometries import IMPLEMENTED, generate
+
+    for seed in range(3):
+        rng = np.random.default_rng(seed)
+        occupied = rng.random((64, 64)) < 0.5
+        n_occ = int(occupied.sum())
+        for condition in IMPLEMENTED:
+            for n_treat in (0, 1, n_occ // 10, n_occ // 2, n_occ):
+                if condition == "none" and n_treat > 0:
+                    continue
+                mask = generate(condition, np.random.default_rng(seed), occupied, n_treat)
+                assert mask.dtype == bool and mask.shape == occupied.shape
+                assert not (mask & ~occupied).any(), (
+                    f"{condition} n_treat={n_treat} seed={seed} treated an unoccupied cell"
+                )
 
 
 @pytest.mark.xfail(reason="I9 conservation lands in SPEC-03", strict=False)
