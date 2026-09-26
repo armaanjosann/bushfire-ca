@@ -56,10 +56,11 @@ def test_zero_budget_does_not_touch_rng(condition):
     assert rng.bit_generator.state == before
 
 
-@pytest.mark.parametrize("condition", [c for c in CONDITIONS if c not in IMPLEMENTED])
-def test_unimplemented_condition_with_budget_raises_not_implemented(condition):
-    with pytest.raises(NotImplementedError):
-        generate(condition, _rng(), _occupied(), 5)
+def test_every_schema_condition_has_a_generator():
+    # SPEC-09 shipped none/random, SPEC-10 the clustering family, SPEC-11
+    # buffer; a condition the schema knows but nobody implemented would
+    # raise NotImplementedError from generate at the first b > 0 run
+    assert IMPLEMENTED == CONDITIONS
 
 
 def test_negative_budget_raises():
@@ -211,15 +212,17 @@ def test_reserved_params_are_accepted(condition, n_treat):
     # every generator tolerates both keys (DEC-007, DEC-008)
     if condition == "none" and n_treat > 0:
         pytest.skip("none takes no budget")
-    mask = generate(condition, _rng(), _occupied(), n_treat, phi=0.7, settlement_side=32)
+    # L=64 so a 32-side block leaves room for rings (buffer)
+    mask = generate(condition, _rng(), _occupied_with_block(L=64, side=32), n_treat, phi=0.7, settlement_side=32)
     assert mask.dtype == bool
 
 
-@pytest.mark.parametrize("condition", [c for c in IMPLEMENTED if not c.startswith("strips")])
+@pytest.mark.parametrize("condition", ["none", "random", "patches"])
 @pytest.mark.parametrize("n_treat", [0, 40])
 def test_reserved_params_are_ignored_by_non_strip_conditions(condition, n_treat):
     # none, random and patches use neither key; the strip conditions use
-    # phi by construction (DEC-008) and are tested separately below
+    # phi (DEC-008) and buffer uses settlement_side (DEC-007) by
+    # construction, and are tested in their own sections below
     if condition == "none" and n_treat > 0:
         pytest.skip("none takes no budget")
     occ = _occupied()
@@ -532,3 +535,191 @@ def test_strips_sub_band_budget_is_one_thinned_band_at_random_position():
         starts.add(int(xs.min()))
     assert len(starts) > 3                          # position varies with seed
     assert max(starts) - min(starts) > w            # and is not pinned to one edge
+
+
+# ===========================================================================
+# SPEC-11 — buffer
+# ===========================================================================
+
+from src.model import BURNING, FUEL, SETTLEMENT, Config, initial_grids, run_fire  # noqa: E402
+
+
+def _chebyshev_from_block(L, side):
+    lo = L // 2 - side // 2
+    hi = lo + side
+    ys, xs = np.indices((L, L))
+    dy = np.maximum(np.maximum(lo - ys, ys - (hi - 1)), 0)
+    dx = np.maximum(np.maximum(lo - xs, xs - (hi - 1)), 0)
+    return np.maximum(dy, dx)
+
+
+def _ring_from_initial_grids(L, side):
+    """The 1-cell ring around the settlement block as initial_grids actually
+    places it — the generator must agree with the model, not with a
+    re-derivation in this file."""
+    cfg = Config(L=L, settlement=True, geometry_params={"settlement_side": side})
+    state, _ = initial_grids(cfg, np.random.default_rng(0))
+    block = state == SETTLEMENT
+    ys, xs = np.nonzero(block)
+    ring = np.zeros((L, L), dtype=bool)
+    ring[ys.min() - 1:ys.max() + 2, xs.min() - 1:xs.max() + 2] = True
+    return ring & ~block
+
+
+def _occupied_with_block(seed=0, L=64, p=0.5, side=16):
+    occ = _occupied(seed=seed, L=L, p=p)
+    occ[_chebyshev_from_block(L, side) == 0] = False
+    return occ
+
+
+def test_buffer_requires_settlement_side():
+    with pytest.raises(ValueError, match="settlement_side"):
+        generate("buffer", _rng(), _occupied_with_block(), 50, phi=0.0)
+
+
+@pytest.mark.parametrize("side", [0, -4, 2.5, "16", None])
+def test_buffer_rejects_bad_settlement_side(side):
+    with pytest.raises(ValueError):
+        generate("buffer", _rng(), _occupied_with_block(), 50, settlement_side=side)
+
+
+def test_buffer_rejects_side_that_does_not_fit():
+    with pytest.raises(ValueError, match="fit"):
+        generate("buffer", _rng(), _occupied_with_block(L=32), 10, settlement_side=40)
+
+
+def test_buffer_config_without_settlement_raises_at_config():
+    # §4.4: caught at construction, never reaches the generator
+    with pytest.raises(ValueError):
+        Config(L=64, condition="buffer", b=0.1, settlement=False)
+
+
+def test_buffer_is_contiguous_annulus_except_outer_ring():
+    L, side = 64, 16
+    dist = _chebyshev_from_block(L, side)
+    occ = _full(L)
+    occ[dist == 0] = False
+    ring = lambda r: int((dist == r).sum())
+    # two full rings plus half of the third
+    n_treat = ring(1) + ring(2) + ring(3) // 2
+    mask = generate("buffer", _rng(1), occ, n_treat, settlement_side=side)
+    assert int(mask.sum()) == n_treat
+    assert mask[dist == 1].all() and mask[dist == 2].all()      # complete inner rings
+    assert int(mask[dist == 3].sum()) == ring(3) // 2            # partial outer ring
+    assert not mask[dist == 0].any() and not mask[dist > 3].any()
+
+
+def test_buffer_outer_ring_fill_is_random_and_seeded():
+    L, side = 64, 16
+    dist = _chebyshev_from_block(L, side)
+    occ = _full(L)
+    occ[dist == 0] = False
+    n_treat = int((dist == 1).sum()) + int((dist == 2).sum()) // 2
+    a = generate("buffer", _rng(0), occ, n_treat, settlement_side=side)
+    b = generate("buffer", _rng(0), occ, n_treat, settlement_side=side)
+    c = generate("buffer", _rng(1), occ, n_treat, settlement_side=side)
+    assert np.array_equal(a, b)
+    assert not np.array_equal(a, c)
+    assert np.array_equal(a[dist == 1], c[dist == 1])            # inner ring identical
+
+
+def test_buffer_first_ring_matches_the_block_initial_grids_places():
+    # the generator and initial_grids must agree on where the block is,
+    # for every side SPEC-12's pilot will try (DEC-007)
+    L = 128
+    for side in (8, 16, 32, 48):
+        ring1 = _ring_from_initial_grids(L, side)
+        occ = _full(L)
+        occ[_chebyshev_from_block(L, side) == 0] = False
+        mask = generate("buffer", _rng(), occ, int(ring1.sum()), settlement_side=side)
+        assert np.array_equal(mask, ring1)
+
+
+def test_buffer_grows_from_the_32_block_not_the_default():
+    L = 96
+    occ = _full(L)
+    occ[_chebyshev_from_block(L, 32) == 0] = False
+    mask = generate("buffer", _rng(), occ, 4 * (32 + 1), settlement_side=32)
+    assert np.array_equal(mask, _ring_from_initial_grids(L, 32))
+    assert not np.array_equal(mask, _ring_from_initial_grids(L, 16))
+    # and the 16-ring lies inside the 32-block, so nothing there is treated
+    assert not mask[_ring_from_initial_grids(L, 16)].any()
+
+
+def test_buffer_never_treats_inside_the_block_even_if_occupied_there():
+    L, side = 64, 16
+    occ = _occupied(seed=2, L=L, p=0.6)                # block region occupied
+    dist = _chebyshev_from_block(L, side)
+    n_treat = int((occ & (dist > 0)).sum()) // 3
+    mask = generate("buffer", _rng(), occ, n_treat, settlement_side=side)
+    assert not mask[dist == 0].any()
+    assert int(mask.sum()) == n_treat
+
+
+def test_buffer_skips_empty_cells_and_meets_budget_over_seeds():
+    # acceptance: >=50 seeds at b in {0.05, 0.15, 0.30}, p in {0.4, 0.55, 0.7}
+    L, side = 64, 16
+    dist = _chebyshev_from_block(L, side)
+    for p in (0.4, 0.55, 0.7):
+        for b in (0.05, 0.15, 0.30):
+            for seed in range(50):
+                occ = _occupied_with_block(seed=seed, L=L, p=p, side=side)
+                n_treat = round(b * int(occ.sum()))
+                mask = generate("buffer", _rng(seed), occ, n_treat, phi=0.0, settlement_side=side)
+                assert int(mask.sum()) == n_treat, (p, b, seed)
+                assert not (mask & ~occ).any()
+                # annulus: every treated cell's ring index is <= the outermost,
+                # and every occupied cell on a strictly inner ring is treated
+                r = int(dist[mask].max())
+                assert (mask | ~occ)[(dist > 0) & (dist < r)].all()
+
+
+def test_buffer_truncates_at_lattice_edge_and_meets_budget():
+    L, side = 64, 16
+    occ = _occupied_with_block(seed=4, L=L, p=0.5, side=side)
+    mask = generate("buffer", _rng(), occ, int(occ.sum()), settlement_side=side)   # everything
+    assert np.array_equal(mask, occ)
+    # rings had to reach every edge to get there
+    assert mask[0, :].any() and mask[-1, :].any() and mask[:, 0].any() and mask[:, -1].any()
+
+
+def test_buffer_unachievable_budget_raises_clearly():
+    L, side = 64, 16
+    occ = _occupied(seed=5, L=L, p=0.5)                # includes cells inside the block
+    with pytest.raises(ValueError, match="unachievable"):
+        generate("buffer", _rng(), occ, int(occ.sum()), settlement_side=side)
+
+
+def test_buffer_ignores_phi():
+    occ = _occupied_with_block()
+    a = generate("buffer", _rng(), occ, 150, settlement_side=16, phi=0.0)
+    b = generate("buffer", _rng(), occ, 150, settlement_side=16, phi=0.7)
+    assert np.array_equal(a, b)
+
+
+def test_buffer_through_run_fire_wraps_the_settlement():
+    for seed in range(3):
+        cfg = Config(L=64, p=0.55, settlement=True, condition="buffer", b=0.15, seed=seed)
+        state, f = initial_grids(cfg, np.random.default_rng(cfg.seed))
+        occupied = (state == FUEL) | (state == BURNING)
+        treated = occupied & (f == cfg.f_treat)
+        assert int(treated.sum()) == round(cfg.b * int(occupied.sum()))
+        dist = _chebyshev_from_block(cfg.L, 16)
+        assert not treated[state == SETTLEMENT].any()
+        # everything occupied on ring 1 is treated at this budget
+        assert treated[(dist == 1) & occupied].all()
+        result = run_fire(cfg)
+        assert result.n_treated == int(treated.sum())
+
+
+def test_buffer_ignition_inside_the_ring_is_allowed():
+    # §3.6: do not exclude ignition regions. Over many seeds some fires
+    # must start inside the treated annulus.
+    inside = 0
+    for seed in range(60):
+        cfg = Config(L=64, p=0.55, settlement=True, condition="buffer", b=0.30, seed=seed)
+        state, f = initial_grids(cfg, np.random.default_rng(cfg.seed))
+        by, bx = np.nonzero(state == BURNING)
+        if by.size and f[by[0], bx[0]] == cfg.f_treat:
+            inside += 1
+    assert inside > 0
