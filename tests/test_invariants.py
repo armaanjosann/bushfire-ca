@@ -159,7 +159,10 @@ def test_i7_budget_parity():
         for b in (0.05, 0.10, 0.15, 0.30):
             for p in (0.4, 0.6):
                 for seed in range(3):
-                    cfg = Config(L=64, p=p, condition=condition, b=b, seed=seed)
+                    cfg = Config(
+                        L=64, p=p, condition=condition, b=b, seed=seed,
+                        settlement=(condition == "buffer"),   # §4.4
+                    )
                     result = run_fire(cfg)
                     nominal = round(b * result.n_occupied)
                     assert abs(result.n_treated - nominal) <= budget_tolerance(nominal), (
@@ -178,12 +181,18 @@ def test_i8_treatment_placement():
     for seed in range(3):
         rng = np.random.default_rng(seed)
         occupied = rng.random((64, 64)) < 0.5
+        # a settlement block of the default side is never occupied (§3.6);
+        # carving it out keeps the field consistent for every condition
+        occupied[24:40, 24:40] = False
         n_occ = int(occupied.sum())
         for condition in IMPLEMENTED:
             for n_treat in (0, 1, n_occ // 10, n_occ // 2, n_occ):
                 if condition == "none" and n_treat > 0:
                     continue
-                mask = generate(condition, np.random.default_rng(seed), occupied, n_treat)
+                mask = generate(
+                    condition, np.random.default_rng(seed), occupied, n_treat,
+                    phi=0.0, settlement_side=16,   # what the call site always passes
+                )
                 assert mask.dtype == bool and mask.shape == occupied.shape
                 assert not (mask & ~occupied).any(), (
                     f"{condition} n_treat={n_treat} seed={seed} treated an unoccupied cell"
