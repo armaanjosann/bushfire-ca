@@ -250,12 +250,72 @@ def _strips_para(rng, occupied, n_treat, **params):
     return _strips(rng, occupied, n_treat, parallel=True, **params)
 
 
+def _settlement_block(shape, side):
+    """(lo, hi) of the settlement block, rows and cols [lo, hi): a square
+    of `side` centred at (L//2, L//2), exactly as initial_grids places it
+    and metrics.settlement_ring reads it (project-context.md §3.6)."""
+    L_y, L_x = shape
+    if L_y != L_x:
+        raise ValueError(f"buffer: expected a square grid, got {shape}")
+    lo = L_y // 2 - side // 2
+    hi = lo + side
+    if lo < 0 or hi > L_y:
+        raise ValueError(f"buffer: settlement_side={side} does not fit in L={L_y}")
+    return lo, hi
+
+
+def _buffer(rng, occupied, n_treat, **params):
+    """Concentric rings grown outward from the settlement block, one cell
+    of thickness at a time (Chebyshev distance), until covered occupied
+    cells >= n_treat; the final partial ring is filled at random (§4.2).
+    Rings past the lattice edge are truncated (§3.1). The targeted
+    condition, off the clustering-scale axis (§11). Ignores phi.
+
+    The block side comes from params["settlement_side"], which SPEC-02's
+    call site always passes (DEC-007); it is neither defaulted nor
+    inferred from `occupied`, because SPEC-12's pilot varies it per config.
+    """
+    if "settlement_side" not in params:
+        raise ValueError(
+            "buffer requires settlement_side in params (a settlement must exist; DEC-007)"
+        )
+    side = _positive_int(params, "settlement_side", None, "buffer")
+    lo, hi = _settlement_block(occupied.shape, side)
+
+    # Chebyshev distance from the block: 0 inside it, r on the r-th ring.
+    ys, xs = np.indices(occupied.shape)
+    dy = np.maximum(np.maximum(lo - ys, ys - (hi - 1)), 0)
+    dx = np.maximum(np.maximum(lo - xs, xs - (hi - 1)), 0)
+    dist = np.maximum(dy, dx)
+
+    # Occupied cells per ring, cumulative outward; the block itself (ring 0)
+    # is never treated whatever `occupied` says there.
+    eligible = occupied & (dist > 0)
+    per_ring = np.bincount(dist[eligible], minlength=int(dist.max()) + 1)
+    cumulative = np.cumsum(per_ring)
+    reaching = np.nonzero(cumulative >= n_treat)[0]
+    if reaching.size == 0:
+        raise ValueError(
+            f"buffer: only {int(cumulative[-1])} occupied cells lie outside the "
+            f"settlement block, budget n_treat={n_treat} is unachievable"
+        )
+    r = int(reaching[0])                          # first ring that reaches the budget
+
+    mask = eligible & (dist < r)                  # complete inner rings
+    need = n_treat - int(np.count_nonzero(mask))
+    ring_y, ring_x = np.nonzero(eligible & (dist == r))
+    pick = rng.choice(ring_y.size, size=need, replace=False)
+    mask[ring_y[pick], ring_x[pick]] = True
+    return mask
+
+
 _GENERATORS = {
     "none": _none,
     "random": _random,
     "patches": _patches,
     "strips_perp": _strips_perp,
     "strips_para": _strips_para,
+    "buffer": _buffer,
 }
 
 # The nine clustering-scale levels of §6.2 / §10.1 D2, so an experiment grid

@@ -1,16 +1,16 @@
 ---
 id: SPEC-11
 title: Buffer geometry
-status: not started
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)
 depends_on: [SPEC-02, SPEC-09]
 implements: [§4.2, §3.6]
-issue:
+issue: "#11"
 branch: spec/SPEC-11-buffer-geometry
 pr:
-decisions: [DEC-007]
+decisions: [DEC-007, DEC-026]
 ---
 
 # SPEC-11 — `buffer`
@@ -66,18 +66,18 @@ As `project-context.md` §4.2 — do not redesign; do not add a parameter to the
 
 ## Acceptance criteria
 
-- [ ] The mask is a contiguous annulus around the settlement block, except for the randomly filled outermost ring.
-- [ ] No treated cell is inside the settlement block.
-- [ ] No treated cell is unoccupied (I8).
-- [ ] Budget met within the shared tolerance over ≥50 seeds at `b ∈ {0.05, 0.15, 0.30}` and `p ∈ {0.4, 0.55, 0.7}`.
-- [ ] At a budget large enough that rings reach the lattice edge, the generator truncates and still meets the budget, or raises a clear error if the budget is unachievable.
-- [ ] `n_treat == 0` returns all-False without touching `rng`.
-- [ ] With `settlement_side=32` in params, rings grow from the 32-side block, not the default (DEC-007).
-- [ ] Constructing a `buffer` config with `settlement=False` raises at `Config` construction (§4.4), not here.
+- [x] The mask is a contiguous annulus around the settlement block, except for the randomly filled outermost ring.
+- [x] No treated cell is inside the settlement block.
+- [x] No treated cell is unoccupied (I8).
+- [x] Budget met within the shared tolerance over ≥50 seeds at `b ∈ {0.05, 0.15, 0.30}` and `p ∈ {0.4, 0.55, 0.7}`.
+- [x] At a budget large enough that rings reach the lattice edge, the generator truncates and still meets the budget, or raises a clear error if the budget is unachievable.
+- [x] `n_treat == 0` returns all-False without touching `rng`.
+- [x] With `settlement_side=32` in params, rings grow from the 32-side block, not the default (DEC-007).
+- [x] Constructing a `buffer` config with `settlement=False` raises at `Config` construction (§4.4), not here.
 
 ## Invariants
 
-- [ ] None owned. I6, I7 and I8 must continue to pass with `buffer` in the condition set.
+- [x] None owned. I6, I7 and I8 must continue to pass with `buffer` in the condition set.
 
 ## Verification
 
@@ -99,10 +99,10 @@ PY
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR
 - [ ] `status` updated in this file and in `progress-tracker.md`
 - [ ] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
