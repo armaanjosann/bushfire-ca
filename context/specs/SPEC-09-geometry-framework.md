@@ -1,13 +1,13 @@
 ---
 id: SPEC-09
 title: Geometry framework, none, random
-status: not started
+status: in progress
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)
 depends_on: [SPEC-02]
 implements: [§4.2]
-issue:
+issue: "#9"
 branch: spec/SPEC-09-geometry-framework
 pr:
 decisions: [DEC-007, DEC-008]
