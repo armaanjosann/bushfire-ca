@@ -1,7 +1,7 @@
 ---
 id: SPEC-09
 title: Geometry framework, none, random
-status: in progress
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)

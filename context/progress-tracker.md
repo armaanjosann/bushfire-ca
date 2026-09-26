@@ -32,7 +32,7 @@ Full definitions in `workflow-rules.md` §4.
 | SPEC-06 | `p_c` estimation, FSS, `p_rel` resolver | Armaan | P2 — Harness & validation | `not started` | SPEC-05 |  | DEC-004 |
 | SPEC-07 | Experiment 0: percolation validation | Aaron | P2 — Harness & validation | `not started` | SPEC-05, SPEC-06 |  | DEC-001, DEC-004, DEC-014 |
 | SPEC-08 | Figure foundation, validation figure | Armaan | P2 — Harness & validation | `not started` | SPEC-07 |  | DEC-001, DEC-016, DEC-017 |
-| SPEC-09 | Geometry framework, `none`, `random` | Armaan | P3 — Treatment geometries | `in progress` | SPEC-02 |  | DEC-007, DEC-008, DEC-023 |
+| SPEC-09 | Geometry framework, `none`, `random` | Armaan | P3 — Treatment geometries | `in review` | SPEC-02 |  | DEC-007, DEC-008, DEC-023 |
 | SPEC-10 | `patches`, `strips_perp`, `strips_para` | Armaan | P3 — Treatment geometries | `not started` | SPEC-09 |  | DEC-007, DEC-008 |
 | SPEC-11 | `buffer` | Armaan | P3 — Treatment geometries | `not started` | SPEC-02, SPEC-09 |  | DEC-007 |
 | SPEC-12 | Settlement pilot, coarse Exp 1, freeze | Aaron | P4 — Parameter freeze | `not started` | SPEC-05, SPEC-06, SPEC-10, SPEC-11, SPEC-19 |  | DEC-003, DEC-007, DEC-011, DEC-015 |
