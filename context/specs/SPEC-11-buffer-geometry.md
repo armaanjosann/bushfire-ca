@@ -1,13 +1,13 @@
 ---
 id: SPEC-11
 title: Buffer geometry
-status: not started
+status: in progress
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)
 depends_on: [SPEC-02, SPEC-09]
 implements: [§4.2, §3.6]
-issue:
+issue: "#11"
 branch: spec/SPEC-11-buffer-geometry
 pr:
 decisions: [DEC-007]
