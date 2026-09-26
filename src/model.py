@@ -1,124 +1,382 @@
-"""
-Bushfire spread cellular automaton (stochastic 2D CA, Moore neighbourhood).
+"""Core model contracts: Config, RunResult, wind_weights, run_fire."""
 
-Minimal implementation of the model in checkpoint1-bushfire-ca-roadmap.md §4.
+from dataclasses import dataclass, field
 
-States:  EMPTY=0  FUEL=1  BURNING=2  BURNT=3
-Rule:    a burning cell i tries to ignite each neighbour j with
-             P(i -> j) = clip(beta * w(theta_ij) * f_j, 0, 1)
-         and j ignites if any of its burning neighbours succeeds.
-         With beta=1, kappa=0, f=1 this is exactly site percolation.
-"""
 import numpy as np
 
-EMPTY, FUEL, BURNING, BURNT = 0, 1, 2, 3
+from src import geometries
 
-# The 8 Moore offsets (dy, dx). A burning cell at (y, x) can ignite (y+dy, x+dx).
-OFFSETS = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if (dy, dx) != (0, 0)]
+# Neighbour offsets, (dy, dx). Fixed order — weights in wind_weights() are
+# indexed by this order and it must never be re-sorted (project-context.md §3.4).
+NEIGHBOURS = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 
+DIAGONAL_FACTOR = 1.0 / np.sqrt(2.0)
 
-def wind_kernel(kappa=0.0, phi=0.0):
-    """von Mises weight for each of the 8 spread directions, normalised so the
-    mean over directions is 1. phi is the wind direction in radians, 0 = east
-    (+x), angles measured anticlockwise with north = +y (i.e. -dy)."""
-    thetas = np.array([np.arctan2(-dy, dx) for dy, dx in OFFSETS])
-    w = np.exp(kappa * np.cos(thetas - phi))
-    return w / w.mean()
+# Validation target only — never a grid value or a substitute for a measured p_c.
+P_C_LITERATURE = 0.407
 
+# Cell state codes, int8 (project-context.md §3.1).
+EMPTY = 0
+FUEL = 1
+BURNING = 2
+BURNT = 3
+SETTLEMENT = 4
 
-def _shift(a, dy, dx):
-    """Return b with b[y+dy, x+dx] = a[y, x]; cells shifted in from outside are 0
-    (absorbing boundaries)."""
-    L = a.shape[0]
-    out = np.zeros_like(a)
-    ys, yd = (slice(0, L - dy), slice(dy, L)) if dy >= 0 else (slice(-dy, L), slice(0, L + dy))
-    xs, xd = (slice(0, L - dx), slice(dx, L)) if dx >= 0 else (slice(-dx, L), slice(0, L + dx))
-    out[yd, xd] = a[ys, xs]
-    return out
+# Provisional. Bound by the pilot in project-context.md §10.2 O1, owned by
+# SPEC-12. Do not resolve it here (workflow-rules.md §7) — this is only the
+# default used when geometry_params lacks an explicit "settlement_side".
+SETTLEMENT_SIDE = 16
 
 
-def make_landscape(L, p, rng, fuel_mask=None, f_treat=0.2):
-    """Random landscape: each cell holds fuel with prob p. Returns (state, fuel_load).
-    fuel_mask (bool LxL) marks treated cells whose load is reduced to f_treat."""
-    state = np.where(rng.random((L, L)) < p, FUEL, EMPTY).astype(np.uint8)
-    f = (state == FUEL).astype(float)
-    if fuel_mask is not None:
-        f[fuel_mask & (state == FUEL)] = f_treat
+@dataclass(frozen=True)
+class Config:
+    # lattice
+    L: int = 256
+    # regime
+    regime: str = "STUDY"              # "STUDY" | "PERCOLATION"
+    # fuel
+    p: float = 0.45                    # occupancy probability
+    f_treat: float = 0.2
+    # rule
+    beta: float = 0.8
+    kappa: float = 0.0
+    phi: float = 0.0
+    tau: int = 1
+    diagonal_factor: bool = True
+    # treatment
+    condition: str = "none"            # see §4.2
+    b: float = 0.0                     # fraction of OCCUPIED cells treated
+    geometry_params: dict = field(default_factory=dict)
+    # setup
+    ignition: str = "random_cell"      # "random_cell" | "edge"
+    settlement: bool = False
+    max_steps: int | None = None       # default 8 * L, resolved in run_fire
+    # reproducibility
+    seed: int = 0
+
+    def __post_init__(self):
+        if self.regime == "PERCOLATION":
+            if self.beta != 1.0:
+                raise ValueError(
+                    "PERCOLATION regime requires beta == 1.0, got "
+                    f"beta={self.beta!r}"
+                )
+            if self.kappa != 0.0:
+                raise ValueError(
+                    "PERCOLATION regime requires kappa == 0.0, got "
+                    f"kappa={self.kappa!r}"
+                )
+            if self.diagonal_factor is True:
+                raise ValueError(
+                    "PERCOLATION regime requires diagonal_factor == False, got "
+                    f"diagonal_factor={self.diagonal_factor!r}"
+                )
+            if self.tau != 1:
+                raise ValueError(
+                    f"PERCOLATION regime requires tau == 1, got tau={self.tau!r}"
+                )
+            if self.b != 0:
+                raise ValueError(
+                    f"PERCOLATION regime requires b == 0, got b={self.b!r}"
+                )
+            if self.ignition != "edge":
+                raise ValueError(
+                    "PERCOLATION regime requires ignition == 'edge', got "
+                    f"ignition={self.ignition!r}"
+                )
+
+        if self.condition == "buffer" and self.settlement is False:
+            raise ValueError(
+                "condition == 'buffer' requires settlement == True, got "
+                f"settlement={self.settlement!r}"
+            )
+
+        if self.condition == "none" and self.b != 0:
+            raise ValueError(
+                f"condition == 'none' requires b == 0, got b={self.b!r}"
+            )
+
+        if self.b < 0 or self.b > 1:
+            raise ValueError(f"b must be in [0, 1], got b={self.b!r}")
+
+        if self.p < 0 or self.p > 1:
+            raise ValueError(f"p must be in [0, 1], got p={self.p!r}")
+
+        if self.tau < 1:
+            raise ValueError(f"tau must be >= 1, got tau={self.tau!r}")
+
+        if self.L < 32:
+            raise ValueError(f"L must be >= 32, got L={self.L!r}")
+
+
+def wind_weights(kappa: float, phi: float, diagonal_factor: bool) -> np.ndarray:
+    """Von Mises wind kernel weights, shape (8,), indexed by NEIGHBOURS order.
+
+    Normalised so the mean over the eight directions is 1 (not sum 1) — see
+    project-context.md §3.4 on why sum-1 would confound kappa with beta.
+    """
+    dy = np.array([d[0] for d in NEIGHBOURS], dtype=np.float64)
+    dx = np.array([d[1] for d in NEIGHBOURS], dtype=np.float64)
+    theta = np.arctan2(-dy, dx)
+
+    raw = np.exp(kappa * np.cos(theta - phi))
+    if diagonal_factor:
+        is_diagonal = (dy != 0) & (dx != 0)
+        raw = np.where(is_diagonal, raw * DIAGONAL_FACTOR, raw)
+
+    return raw / raw.mean()
+
+
+def initial_grids(cfg: Config, rng) -> tuple[np.ndarray, np.ndarray]:
+    """Build the initial (state, f) grids per project-context.md §3.2.
+
+    Rng-stream note (SPEC-02 notes and risks): occupancy is drawn with a
+    single rng.random((L, L)) call over the *whole* lattice, and the
+    settlement footprint (if any) is carved out and overwritten to
+    SETTLEMENT/f=0 afterwards, rather than drawing only over non-settlement
+    cells. This keeps the shape of the occupancy draw — and so the rng
+    stream it consumes — independent of whether a settlement is present or
+    how large it is, which I2 (determinism) and I6 (null treatment) both
+    depend on.
+    """
+    L = cfg.L
+    side = cfg.geometry_params.get("settlement_side", SETTLEMENT_SIDE)
+
+    settlement_mask = np.zeros((L, L), dtype=bool)
+    if cfg.settlement:
+        half = side // 2
+        centre = L // 2
+        lo = centre - half
+        hi = lo + side
+        settlement_mask[lo:hi, lo:hi] = True
+
+    occupied_draw = rng.random((L, L)) < cfg.p
+    state = np.where(occupied_draw, FUEL, EMPTY).astype(np.int8)
+    f = np.where(occupied_draw, 1.0, 0.0)
+
+    state[settlement_mask] = SETTLEMENT
+    f[settlement_mask] = 0.0
+
+    occupied = state == FUEL
+
+    if "phi" in cfg.geometry_params:
+        raise ValueError(
+            "geometry_params must not contain 'phi'; cfg.phi is the single "
+            "source of wind direction (project-context.md §4.2, DEC-008)"
+        )
+
+    n_treat = round(cfg.b * occupied.sum())
+    params = {**cfg.geometry_params, "phi": cfg.phi, "settlement_side": side}
+    mask = geometries.generate(cfg.condition, rng, occupied, n_treat, **params)
+    f[mask] = cfg.f_treat
+
+    if cfg.ignition == "edge":
+        row0 = state[0]
+        state[0] = np.where(row0 == FUEL, BURNING, row0)
+    elif cfg.ignition == "random_cell":
+        fuel_ys, fuel_xs = np.nonzero(state == FUEL)
+        if fuel_ys.size > 0:
+            idx = rng.integers(fuel_ys.size)
+            state[fuel_ys[idx], fuel_xs[idx]] = BURNING
+    else:
+        raise ValueError(f"unknown ignition mode: {cfg.ignition!r}")
+
     return state, f
 
 
-def ignite(state, rng, where="random"):
-    """Set the ignition. 'random' = one random FUEL cell, 'centre' = middle cell,
-    'left_edge' = every FUEL cell in column 0 (standard percolation spanning test)."""
-    L = state.shape[0]
-    if where == "left_edge":
-        col = state[:, 0] == FUEL
-        state[col, 0] = BURNING
-    elif where == "centre":
-        state[L // 2, L // 2] = BURNING
-    else:
-        ys, xs = np.nonzero(state == FUEL)
-        if len(ys) == 0:
-            return state
-        k = rng.integers(len(ys))
-        state[ys[k], xs[k]] = BURNING
-    return state
+@dataclass
+class RunResult:
+    """§5 schema fields minus the config echo (SPEC-03 Interface contract).
+
+    Raw fields are always populated by run_fire (DEC-006). Derived fields
+    default to None here and are filled in by SPEC-04's metrics.py.
+    """
+
+    n_cells: int
+    n_occupied: int
+    n_treated: int
+    ignition_y: int | None
+    ignition_x: int | None
+    burned_cells: int
+    still_burning_cells: int
+    steps: int
+    truncated: bool
+    burned_fraction: float | None = None
+    burned_fraction_of_fuel: float | None = None
+    spanned: bool | None = None
+    reached_edge: bool | None = None
+    settlement_reached: bool | None = None
+    settlement_reached_step: int | None = None
+    scar: np.ndarray | None = None
+    ignition_step: np.ndarray | None = None
 
 
-def step(state, f, rng, beta=1.0, weights=None, tau=1, age=None):
-    """One synchronous update. Returns (new_state, new_age)."""
-    if weights is None:
-        weights = np.ones(8)
-    burning = (state == BURNING).astype(float)
-    if not burning.any():
-        return state, age
-    no_ignite = np.ones_like(f)
-    for (dy, dx), w in zip(OFFSETS, weights):
-        p_ij = np.clip(beta * w * f, 0.0, 1.0)      # target-cell fuel load f_j
-        no_ignite *= 1.0 - _shift(burning, dy, dx) * p_ij
-    p_ignite = 1.0 - no_ignite
-    new = state.copy()
-    catches = (state == FUEL) & (rng.random(state.shape) < p_ignite)
-    # burn duration
-    if age is None:
-        age = np.zeros(state.shape, dtype=np.int32)
-    age = age + (state == BURNING)
-    new[(state == BURNING) & (age >= tau)] = BURNT
-    new[catches] = BURNING
-    return new, age
+def _pad_bbox(y_min, y_max, x_min, x_max, L):
+    """Tight box around (y_min..y_max, x_min..x_max), padded 1 cell, clipped
+    to the grid (project-context.md §8) — the clip is what makes the
+    absorbing boundary fall out for free instead of needing explicit wrap
+    handling."""
+    y0 = max(0, int(y_min) - 1)
+    y1 = min(L, int(y_max) + 2)
+    x0 = max(0, int(x_min) - 1)
+    x1 = min(L, int(x_max) + 2)
+    return y0, y1, x0, x1
 
 
-def run_fire(L=128, p=0.5, beta=1.0, kappa=0.0, phi=0.0, tau=1, seed=0,
-             ignition="random", fuel_mask=None, f_treat=0.2, record=False):
-    """Run one fire to extinction. Returns a dict of metrics (and frames if record)."""
-    rng = np.random.default_rng(seed)
-    state, f = make_landscape(L, p, rng, fuel_mask, f_treat)
-    initial_fuel = (state == FUEL).sum()
-    state = ignite(state, rng, ignition)
-    weights = wind_kernel(kappa, phi)
-    frames = [state.copy()] if record else None
-    age = None
-    steps = 0
-    while (state == BURNING).any():
-        state, age = step(state, f, rng, beta, weights, tau, age)
-        steps += 1
-        if record:
-            frames.append(state.copy())
-    burnt = state == BURNT
-    out = dict(
-        burned_frac=burnt.sum() / (L * L),
-        burned_of_fuel=burnt.sum() / max(initial_fuel, 1),
-        steps=steps,
-        span_lr=bool(burnt[:, 0].any() and burnt[:, -1].any()),
-        span_tb=bool(burnt[0, :].any() and burnt[-1, :].any()),
-        seed=seed,
-    )
-    out["span"] = out["span_lr"] or out["span_tb"]
-    if record:
-        out["frames"] = frames
+def _bounding_box(burning_mask, L):
+    """Padded bounding box of a boolean mask, or None if it is empty."""
+    ys, xs = np.nonzero(burning_mask)
+    if ys.size == 0:
+        return None
+    return _pad_bbox(ys.min(), ys.max(), xs.min(), xs.max(), L)
+
+
+def _shifted(mask, dy, dx):
+    """mask shifted so out[y, x] = mask[y - dy, x - dx]; cells shifted in
+    from outside the array read as False — the non-periodic, absorbing
+    boundary (project-context.md §3.1), not a wraparound."""
+    h, w = mask.shape
+    out = np.zeros_like(mask)
+    sy0, sy1 = max(0, -dy), h - max(0, dy)
+    sx0, sx1 = max(0, -dx), w - max(0, dx)
+    dy0, dy1 = max(0, dy), h - max(0, -dy)
+    dx0, dx1 = max(0, dx), w - max(0, -dx)
+    out[dy0:dy1, dx0:dx1] = mask[sy0:sy1, sx0:sx1]
     return out
 
 
-if __name__ == "__main__":
-    r = run_fire(L=64, p=0.5, seed=1, ignition="centre")
-    print({k: v for k, v in r.items() if k != "frames"})
+def run_fire(cfg: Config, capture_scar: bool = False) -> RunResult:
+    """Run one fire to extinction (project-context.md §3.3, §3.7, §8).
+
+    Pure in cfg: builds its own generator from cfg.seed and never accepts an
+    external rng, which is what makes two calls on the same Config produce
+    an identical RunResult (I2). The Bernoulli draw is one rng.random((L, L))
+    call per step — the full grid, matching §3.3/§8's "over the whole grid"
+    — so the bounding-box restriction below (which only scopes the shifted-
+    mask arithmetic, the expensive part) doesn't change the rng stream and
+    a step-for-step full-grid implementation reaches the same result.
+    """
+    # Local import: metrics imports the state constants from this module, so a
+    # top-level import here would be circular (SPEC-04, DEC-006).
+    from src import metrics
+
+    rng = np.random.default_rng(cfg.seed)
+    L = cfg.L
+    max_steps = cfg.max_steps if cfg.max_steps is not None else 8 * L
+
+    state, f = initial_grids(cfg, rng)
+
+    occupied = (state == FUEL) | (state == BURNING)
+    n_occupied = int(occupied.sum())
+    n_treated = (
+        int(np.count_nonzero(occupied & (f == cfg.f_treat))) if cfg.b > 0 else 0
+    )
+
+    ignition_y = ignition_x = None
+    if cfg.ignition == "random_cell":
+        ys, xs = np.nonzero(state == BURNING)
+        if ys.size > 0:
+            ignition_y, ignition_x = int(ys[0]), int(xs[0])
+
+    burn_clock = np.zeros((L, L), dtype=np.uint8)
+
+    ignition_step = None
+    if capture_scar:
+        ignition_step = np.full((L, L), -1, dtype=np.int32)
+        ignition_step[state == BURNING] = 0
+
+    weights = wind_weights(cfg.kappa, cfg.phi, cfg.diagonal_factor)
+
+    # Settlement ring check (SPEC-04, DEC-006). Consults the ring only; never
+    # touches rng or the step. Step 0 covers a random_cell ignition that lands
+    # on the ring itself (§3.6 "at any time during the run", DEC-020).
+    settlement_reached = settlement_reached_step = None
+    ring = None
+    if cfg.settlement:
+        side = cfg.geometry_params.get("settlement_side", SETTLEMENT_SIDE)
+        ring = metrics.settlement_ring(L, side)
+        settlement_reached = bool((state[ring] == BURNING).any())
+        settlement_reached_step = 0 if settlement_reached else None
+
+    bbox = _bounding_box(state == BURNING, L)
+    step_number = 0
+    truncated = False
+
+    while bbox is not None:
+        if step_number >= max_steps:
+            truncated = True
+            break
+        step_number += 1
+
+        draws = rng.random((L, L))
+
+        y0, y1, x0, x1 = bbox
+        sub_state = state[y0:y1, x0:x1]
+        sub_f = f[y0:y1, x0:x1]
+        sub_burn_clock = burn_clock[y0:y1, x0:x1]
+        sub_draws = draws[y0:y1, x0:x1]
+
+        sub_burning = sub_state == BURNING
+        fuel_mask = sub_state == FUEL
+
+        no_ignite_prob = np.ones(sub_state.shape, dtype=np.float64)
+        for i, (dy, dx) in enumerate(NEIGHBOURS):
+            shifted_burning = _shifted(sub_burning, dy, dx)
+            p_d = np.clip(cfg.beta * weights[i] * sub_f, 0.0, 1.0)
+            no_ignite_prob *= np.where(shifted_burning, 1.0 - p_d, 1.0)
+
+        p_ignite = np.where(fuel_mask, 1.0 - no_ignite_prob, 0.0)
+        ignite_mask = fuel_mask & (sub_draws < p_ignite)
+
+        sub_burn_clock[sub_burning] += 1
+        newly_burnt = sub_burning & (sub_burn_clock >= cfg.tau)
+        sub_state[newly_burnt] = BURNT
+        sub_state[ignite_mask] = BURNING
+
+        if ring is not None and not settlement_reached:
+            if (ignite_mask & ring[y0:y1, x0:x1]).any():
+                settlement_reached = True
+                settlement_reached_step = step_number
+
+        if capture_scar:
+            ignition_step[y0:y1, x0:x1][ignite_mask] = step_number
+
+        new_y, new_x = np.nonzero(sub_state == BURNING)
+        if new_y.size == 0:
+            bbox = None
+        else:
+            bbox = _pad_bbox(
+                new_y.min() + y0, new_y.max() + y0,
+                new_x.min() + x0, new_x.max() + x0,
+                L,
+            )
+
+    burned_cells = int(np.count_nonzero(state == BURNT))
+    still_burning_cells = int(np.count_nonzero(state == BURNING))
+
+    # Derived outcome fields (SPEC-04, DEC-006) with the §3.5 nulls: spanned
+    # only means something under edge ignition, reached_edge only under
+    # random_cell. None here, never a sentinel bool.
+    return RunResult(
+        n_cells=L * L,
+        n_occupied=n_occupied,
+        n_treated=n_treated,
+        ignition_y=ignition_y,
+        ignition_x=ignition_x,
+        burned_cells=burned_cells,
+        still_burning_cells=still_burning_cells,
+        steps=step_number,
+        truncated=truncated,
+        burned_fraction=metrics.burned_fraction(burned_cells, L * L),
+        burned_fraction_of_fuel=metrics.burned_fraction_of_fuel(
+            burned_cells, n_occupied
+        ),
+        spanned=metrics.spanned(state) if cfg.ignition == "edge" else None,
+        reached_edge=(
+            metrics.reached_edge(state) if cfg.ignition == "random_cell" else None
+        ),
+        settlement_reached=settlement_reached,
+        settlement_reached_step=settlement_reached_step,
+        scar=state.copy() if capture_scar else None,
+        ignition_step=ignition_step if capture_scar else None,
+    )
