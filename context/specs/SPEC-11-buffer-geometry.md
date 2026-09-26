@@ -1,7 +1,7 @@
 ---
 id: SPEC-11
 title: Buffer geometry
-status: in progress
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)
