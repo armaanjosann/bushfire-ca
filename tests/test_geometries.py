@@ -207,7 +207,19 @@ def test_random_is_uniform_over_occupied_cells():
 
 @pytest.mark.parametrize("condition", IMPLEMENTED)
 @pytest.mark.parametrize("n_treat", [0, 40])
-def test_reserved_params_are_accepted_and_ignored(condition, n_treat):
+def test_reserved_params_are_accepted(condition, n_treat):
+    # every generator tolerates both keys (DEC-007, DEC-008)
+    if condition == "none" and n_treat > 0:
+        pytest.skip("none takes no budget")
+    mask = generate(condition, _rng(), _occupied(), n_treat, phi=0.7, settlement_side=32)
+    assert mask.dtype == bool
+
+
+@pytest.mark.parametrize("condition", [c for c in IMPLEMENTED if not c.startswith("strips")])
+@pytest.mark.parametrize("n_treat", [0, 40])
+def test_reserved_params_are_ignored_by_non_strip_conditions(condition, n_treat):
+    # none, random and patches use neither key; the strip conditions use
+    # phi by construction (DEC-008) and are tested separately below
     if condition == "none" and n_treat > 0:
         pytest.skip("none takes no budget")
     occ = _occupied()
@@ -233,3 +245,290 @@ def test_generate_through_initial_grids_matches_direct_call():
     occupied = (state == FUEL) | (state == BURNING)   # ignition cell is fuel too
     treated = (f == cfg.f_treat) & occupied
     assert int(treated.sum()) == round(cfg.b * int(occupied.sum()))
+
+
+# ===========================================================================
+# SPEC-10 — clustering-scale family: patches, strips_perp, strips_para
+# ===========================================================================
+
+from src.geometries import CLUSTERING_LEVELS, _band_coordinate  # noqa: E402
+
+
+def _component_sizes(mask):
+    """Sizes of the 8-connected components of a bool mask (test-only; no
+    scipy in the project)."""
+    L_y, L_x = mask.shape
+    seen = np.zeros_like(mask)
+    sizes = []
+    for y0, x0 in zip(*np.nonzero(mask)):
+        if seen[y0, x0]:
+            continue
+        stack = [(y0, x0)]
+        seen[y0, x0] = True
+        n = 0
+        while stack:
+            y, x = stack.pop()
+            n += 1
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    yy, xx = y + dy, x + dx
+                    if 0 <= yy < L_y and 0 <= xx < L_x and mask[yy, xx] and not seen[yy, xx]:
+                        seen[yy, xx] = True
+                        stack.append((yy, xx))
+        sizes.append(n)
+    return sizes
+
+
+def _along_fraction(mask, dy, dx):
+    """Fraction of treated cells whose (dy, dx) neighbour is also treated,
+    over cells whose neighbour is inside the grid."""
+    L_y, L_x = mask.shape
+    ys, xs = np.nonzero(mask)
+    ok = (ys + dy >= 0) & (ys + dy < L_y) & (xs + dx >= 0) & (xs + dx < L_x)
+    ys, xs = ys[ok], xs[ok]
+    return mask[ys + dy, xs + dx].mean()
+
+
+def _full(L=128):
+    return np.ones((L, L), dtype=bool)
+
+
+# --- registration -----------------------------------------------------------
+
+
+def test_clustering_levels_are_the_nine_of_section_6_2():
+    assert len(CLUSTERING_LEVELS) == 9
+    assert [c for c, _ in CLUSTERING_LEVELS].count("patches") == 3
+    assert [c for c, _ in CLUSTERING_LEVELS].count("strips_perp") == 3
+    assert [c for c, _ in CLUSTERING_LEVELS].count("strips_para") == 3
+    for condition, params in CLUSTERING_LEVELS:
+        assert condition in IMPLEMENTED
+        (key, value), = params.items()
+        assert key == ("k" if condition == "patches" else "w")
+        assert value in (4, 8, 16)
+
+
+def test_all_nine_levels_hit_budget_exactly_over_seeds():
+    # acceptance: >=50 seeds at p in {0.4, 0.55, 0.7}, b in {0.05, 0.15, 0.30}
+    L = 64
+    for condition, params in CLUSTERING_LEVELS:
+        for p in (0.4, 0.55, 0.7):
+            for b in (0.05, 0.15, 0.30):
+                for seed in range(50):
+                    occ = _occupied(seed=seed, L=L, p=p)
+                    n_treat = round(b * int(occ.sum()))
+                    mask = generate(condition, _rng(seed), occ, n_treat, phi=0.0, settlement_side=16, **params)
+                    assert int((mask & occ).sum()) == n_treat, (condition, params, p, b, seed)
+                    assert not (mask & ~occ).any()
+
+
+# --- patches ----------------------------------------------------------------
+
+
+def test_patches_k16_low_budget_exercises_trim():
+    occ = _occupied(seed=0, L=64, p=0.5)
+    n_treat = round(0.05 * int(occ.sum()))       # ~100 cells, one block covers ~128
+    mask = generate("patches", _rng(), occ, n_treat, k=16)
+    assert int(mask.sum()) == n_treat
+    # everything treated sits inside a single 16x16 footprint
+    ys, xs = np.nonzero(mask)
+    assert ys.max() - ys.min() < 16 and xs.max() - xs.min() < 16
+
+
+def test_patches_blocks_are_k_by_k_and_inside_the_grid():
+    # p=1 and a budget below one block: the treated set is one full k x k
+    # block minus trimmed cells, so its bounding box is exactly k x k
+    L, k = 64, 8
+    occ = _full(L)
+    mask = generate("patches", _rng(5), occ, k * k - 3, k=k)
+    ys, xs = np.nonzero(mask)
+    assert ys.max() - ys.min() == k - 1 and xs.max() - xs.min() == k - 1
+    assert int(mask.sum()) == k * k - 3
+
+
+def test_patches_default_k_is_4():
+    occ = _occupied()
+    assert np.array_equal(
+        generate("patches", _rng(), occ, 60),
+        generate("patches", _rng(), occ, 60, k=4),
+    )
+
+
+def test_patches_ignores_phi_and_settlement_side():
+    occ = _occupied()
+    plain = generate("patches", _rng(), occ, 80, k=8)
+    extra = generate("patches", _rng(), occ, 80, k=8, phi=0.7, settlement_side=32)
+    assert np.array_equal(plain, extra)
+
+
+@pytest.mark.parametrize("k", [0, -1, 2.5, "4", True, None])
+def test_patches_rejects_bad_k(k):
+    with pytest.raises(ValueError):
+        generate("patches", _rng(), _occupied(), 10, k=k)
+
+
+def test_patches_rejects_k_larger_than_grid():
+    with pytest.raises(ValueError):
+        generate("patches", _rng(), _occupied(L=32), 10, k=33)
+
+
+def test_patches_raises_rather_than_loops(monkeypatch):
+    monkeypatch.setattr(geometries, "_MAX_PATCH_PLACEMENTS", 2)
+    with pytest.raises(RuntimeError):
+        generate("patches", _rng(), _occupied(), 200, k=4)
+
+
+def test_component_size_increases_with_clustering_scale():
+    # §11: random (scale 1) -> patches(4) -> patches(8) -> patches(16)
+    L, p, b = 128, 0.55, 0.15
+    means = []
+    for condition, params in [("random", {}), ("patches", {"k": 4}), ("patches", {"k": 8}), ("patches", {"k": 16})]:
+        sizes = []
+        for seed in range(3):
+            occ = _occupied(seed=seed, L=L, p=p)
+            n_treat = round(b * int(occ.sum()))
+            sizes += _component_sizes(generate(condition, _rng(seed), occ, n_treat, **params))
+        means.append(np.mean(sizes))
+    assert means[0] < means[1] < means[2] < means[3], means
+
+
+# --- strips: geometry of the band coordinate --------------------------------
+
+
+def test_band_coordinate_orientation_at_0_quarter_and_half_pi():
+    ys, xs = np.indices((16, 16), dtype=float)
+    r = 1 / np.sqrt(2)
+    # perp: bands indexed by the along-wind coordinate
+    assert np.allclose(_band_coordinate((16, 16), 0.0, False), xs)              # east wind: bands are columns
+    assert np.allclose(_band_coordinate((16, 16), np.pi / 2, False), -ys)       # north wind: bands are rows
+    assert np.allclose(_band_coordinate((16, 16), np.pi / 4, False), (xs - ys) * r)
+    # para: bands indexed by the across-wind coordinate (rotated 90 degrees)
+    assert np.allclose(_band_coordinate((16, 16), 0.0, True), ys)
+    assert np.allclose(_band_coordinate((16, 16), np.pi / 2, True), xs)
+    assert np.allclose(_band_coordinate((16, 16), np.pi / 4, True), (xs + ys) * r)
+
+
+# --- strips: the public masks -----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "phi, perp_along, para_along",
+    [
+        (0.0, (1, 0), (0, 1)),            # east wind: perp bands run down columns, para along rows
+        (np.pi / 2, (0, 1), (1, 0)),      # north wind: the reverse
+        (np.pi / 4, (1, 1), (1, -1)),     # diagonal wind: diagonal bands, both conditions
+    ],
+    ids=["phi=0", "phi=pi/2", "phi=pi/4"],
+)
+def test_strip_orientation_on_full_lattice(phi, perp_along, para_along):
+    # DEC-008: bands at any phi. On a full lattice a band of width 4 shows
+    # up as: along-band neighbour almost always treated, across-band
+    # neighbour treated only ~3/4 of the time.
+    L, w = 128, 4
+    n_treat = round(0.3 * L * L)
+    perp = generate("strips_perp", _rng(1), _full(L), n_treat, w=w, phi=phi)
+    para = generate("strips_para", _rng(1), _full(L), n_treat, w=w, phi=phi)
+    assert int(perp.sum()) == n_treat and int(para.sum()) == n_treat
+    across_perp = (perp_along[1], -perp_along[0])
+    across_para = (para_along[1], -para_along[0])
+    assert _along_fraction(perp, *perp_along) > 0.95
+    assert _along_fraction(perp, *across_perp) < 0.85
+    assert _along_fraction(para, *para_along) > 0.95
+    assert _along_fraction(para, *across_para) < 0.85
+
+
+def test_strips_perp_and_para_at_phi0_are_orthogonal_with_same_budget():
+    L, w = 64, 8
+    for seed in range(3):
+        occ = _occupied(seed=seed, L=L, p=0.55)
+        n_treat = round(0.15 * int(occ.sum()))
+        perp = generate("strips_perp", _rng(seed), occ, n_treat, w=w, phi=0.0)
+        para = generate("strips_para", _rng(seed), occ, n_treat, w=w, phi=0.0)
+        assert int(perp.sum()) == int(para.sum()) == n_treat
+        # a column band's cells share x; a row band's share y
+        assert len(np.unique(np.nonzero(perp)[1])) < len(np.unique(np.nonzero(perp)[0]))
+        assert len(np.unique(np.nonzero(para)[0])) < len(np.unique(np.nonzero(para)[1]))
+
+
+def test_strip_phase_varies_with_seed_and_is_reproducible():
+    L = 64
+    n_treat = round(0.3 * L * L)
+    a = generate("strips_perp", _rng(0), _full(L), n_treat, w=4, phi=0.0)
+    b = generate("strips_perp", _rng(0), _full(L), n_treat, w=4, phi=0.0)
+    c = generate("strips_perp", _rng(1), _full(L), n_treat, w=4, phi=0.0)
+    assert np.array_equal(a, b)
+    assert not np.array_equal(a, c)
+
+
+def test_strips_use_phi():
+    occ = _occupied(L=64)
+    n_treat = round(0.15 * int(occ.sum()))
+    east = generate("strips_perp", _rng(0), occ, n_treat, w=4, phi=0.0)
+    north = generate("strips_perp", _rng(0), occ, n_treat, w=4, phi=np.pi / 2)
+    assert not np.array_equal(east, north)
+
+
+def test_strips_default_w_is_4_and_phi_is_0():
+    occ = _occupied(L=64)
+    assert np.array_equal(
+        generate("strips_perp", _rng(), occ, 100),
+        generate("strips_perp", _rng(), occ, 100, w=4, phi=0.0),
+    )
+
+
+@pytest.mark.parametrize("w", [0, -2, 3.0, "8", False])
+def test_strips_reject_bad_w(w):
+    with pytest.raises(ValueError):
+        generate("strips_perp", _rng(), _occupied(), 10, w=w)
+
+
+def test_strip_bisection_terminates_over_the_experiment_1_grid():
+    # w x b x p x phi of the Exp 1 / Exp 2 grids, at L=128 for speed and one
+    # combination at the real L=256; exact budget every time
+    for w in (4, 8, 16):
+        for b in (0.05, 0.10, 0.15, 0.20, 0.25, 0.30):
+            for p in (0.40, 0.50, 0.60, 0.70):
+                for phi in (0.0, -np.pi / 2):
+                    occ = _occupied(seed=3, L=128, p=p)
+                    n_treat = round(b * int(occ.sum()))
+                    for condition in ("strips_perp", "strips_para"):
+                        mask = generate(condition, _rng(3), occ, n_treat, w=w, phi=phi)
+                        assert int(mask.sum()) == n_treat, (condition, w, b, p, phi)
+    occ = _occupied(seed=0, L=256, p=0.55)
+    n_treat = round(0.15 * int(occ.sum()))
+    assert int(generate("strips_perp", _rng(0), occ, n_treat, w=16, phi=-np.pi / 2).sum()) == n_treat
+
+
+def test_strips_raise_rather_than_loop_when_bracket_impossible(monkeypatch):
+    # a band mask that never covers anything can never reach the budget
+    monkeypatch.setattr(geometries, "_band_mask", lambda *a, **k: np.zeros((32, 32), dtype=bool))
+    occ = _occupied()
+    with pytest.raises(RuntimeError):
+        # budget well above one band's worth, so the bisection path is taken
+        generate("strips_perp", _rng(), occ, int(occ.sum()) // 2, w=4, phi=0.0)
+
+
+def test_strips_full_budget_is_touching_bands():
+    occ = _occupied(L=64)
+    mask = generate("strips_para", _rng(), occ, int(occ.sum()), w=4, phi=0.3)
+    assert np.array_equal(mask, occ)
+
+
+def test_strips_sub_band_budget_is_one_thinned_band_at_random_position():
+    # DEC-024: below one band's worth, a single full-width band at a uniform
+    # random position, thinned at random — the patches rule, not a band
+    # pushed off the grid edge
+    L, w = 64, 8
+    n_treat = round(0.6 * w * L)                 # 60% of one band on a full lattice
+    starts = set()
+    for seed in range(12):
+        mask = generate("strips_perp", _rng(seed), _full(L), n_treat, w=w, phi=0.0)
+        assert int(mask.sum()) == n_treat
+        xs = np.unique(np.nonzero(mask)[1])
+        assert xs.max() - xs.min() < w              # one band's width
+        assert mask.any(axis=0)[xs.min():xs.max() + 1].all()
+        # thinned, so along-band adjacency is well below 1
+        assert 0.4 < _along_fraction(mask, 1, 0) < 0.8
+        starts.add(int(xs.min()))
+    assert len(starts) > 3                          # position varies with seed
+    assert max(starts) - min(starts) > w            # and is not pinned to one edge

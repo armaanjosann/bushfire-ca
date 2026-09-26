@@ -85,10 +85,186 @@ def _random(rng, occupied, n_treat, **params):
     return mask
 
 
+def _trim_to_budget(mask, occupied, n_treat, rng):
+    """Un-treat uniformly chosen excess cells so (mask & occupied).sum()
+    == n_treat exactly. The shared last step of every clustered generator
+    (§4.2 "randomly un-treat the excess"; DEC-024 for strips)."""
+    mask = mask & occupied
+    excess = int(np.count_nonzero(mask)) - n_treat
+    if excess > 0:
+        ys, xs = np.nonzero(mask)
+        drop = rng.choice(ys.size, size=excess, replace=False)
+        mask[ys[drop], xs[drop]] = False
+    return mask
+
+
+def _positive_int(params, key, default, condition):
+    value = params.get(key, default)
+    if value is None:
+        raise ValueError(f"condition {condition!r} requires parameter {key!r}")
+    if not isinstance(value, (int, np.integer)) or isinstance(value, bool) or value < 1:
+        raise ValueError(
+            f"condition {condition!r}: {key} must be a positive int, got {value!r}"
+        )
+    return int(value)
+
+
+# Placement cap for patches: a run needing more blocks than this is a bug
+# (or a k larger than the grid), not a slow config. At L=256, k=4, the
+# full-budget worst case needs ~4e4 placements.
+_MAX_PATCH_PLACEMENTS = 1_000_000
+
+
+def _patches(rng, occupied, n_treat, **params):
+    """k x k blocks at uniformly random top-left positions, overlapping
+    allowed, until covered occupied cells >= n_treat; then randomly
+    un-treat the excess (§4.2). Clustering scale k.
+
+    Blocks are placed wholly inside the grid (top-left in [0, L-k] on each
+    axis), so every block covers exactly k*k cells (DEC-025). Ignores phi
+    and settlement_side.
+    """
+    k = _positive_int(params, "k", 4, "patches")
+    L_y, L_x = occupied.shape
+    if k > min(L_y, L_x):
+        raise ValueError(f"patches: k={k} exceeds the grid {occupied.shape}")
+
+    covered = np.zeros(occupied.shape, dtype=bool)
+    count = 0
+    placements = 0
+    while count < n_treat:
+        if placements >= _MAX_PATCH_PLACEMENTS:
+            raise RuntimeError(
+                f"patches: {placements} placements without reaching n_treat={n_treat}"
+            )
+        y = int(rng.integers(0, L_y - k + 1))
+        x = int(rng.integers(0, L_x - k + 1))
+        block = covered[y:y + k, x:x + k]
+        occ = occupied[y:y + k, x:x + k]
+        count += int(np.count_nonzero(occ & ~block))
+        block |= True
+        placements += 1
+
+    return _trim_to_budget(covered, occupied, n_treat, rng)
+
+
+def _band_coordinate(shape, phi, parallel):
+    """Per-cell coordinate that indexes the bands: distance along the wind
+    for strips_perp (bands run across it), across the wind for strips_para
+    (bands run along it). Unit scale, so a band of width w in this
+    coordinate is w cells wide measured perpendicular to the band.
+
+    Uses the §3.4 convention: phi = 0 is east (+x), array +y is south, so
+    the downwind unit vector in (y, x) is (-sin phi, cos phi) and the
+    across-wind one is (cos phi, sin phi).
+    """
+    ys, xs = np.indices(shape, dtype=np.float64)
+    if parallel:
+        return xs * np.sin(phi) + ys * np.cos(phi)
+    return xs * np.cos(phi) - ys * np.sin(phi)
+
+
+def _band_mask(t, t_min, w, spacing, phase):
+    """Bands of width w every `spacing` along t, the first starting at
+    t_min + phase * spacing. Cells inside a band are True."""
+    return ((t - t_min - phase * spacing) % spacing) < w
+
+
+_STRIP_BISECTION_STEPS = 64
+
+
+def _strips(rng, occupied, n_treat, parallel, **params):
+    """Bands of width w, evenly spaced, perpendicular (strips_perp) or
+    parallel (strips_para) to phi; spacing found by bisection so the
+    occupied-cell count hits n_treat (§4.2, DEC-008). Clustering scale w.
+
+    The band phase offset is one uniform draw per replicate (§4.2). The
+    spacing is bounded below by w — touching bands, full coverage — so
+    bands never overlap. Bisection lands on the smallest count >= n_treat
+    reachable by moving the spacing; the residual (at most one band-edge's
+    worth of cells) is trimmed at random. Below one band's worth of budget
+    no spacing can hit n_treat, so a single band is placed at a uniform
+    random position and thinned at random — the same rule §4.2 gives
+    patches for its excess (DEC-024). Ignores settlement_side.
+    """
+    condition = "strips_para" if parallel else "strips_perp"
+    w = _positive_int(params, "w", 4, condition)
+    # SPEC-02's call site always passes phi (DEC-008); the default matches
+    # Config.phi so a bare generate() call is still constructible (DEC-025).
+    phi = float(params.get("phi", 0.0))
+
+    phase = float(rng.random())          # the per-replicate offset, in [0, 1)
+
+    t = _band_coordinate(occupied.shape, phi, parallel)
+    t_min = float(t.min())
+    extent = float(t.max()) - t_min
+
+    def count(spacing):
+        return int(np.count_nonzero(_band_mask(t, t_min, w, spacing, phase) & occupied))
+
+    # Sub-band budget: one full band, fully on the grid, at a uniform random
+    # position, thinned to n_treat (DEC-024).
+    start = t_min + phase * max(extent - w, 0.0)
+    one_band = (t >= start) & (t < start + w)
+    if int(np.count_nonzero(one_band & occupied)) >= n_treat:
+        return _trim_to_budget(one_band, occupied, n_treat, rng)
+
+    # lo: touching bands, everything treated — always >= n_treat since
+    # n_treat <= occupied.sum(). hi: grow until the count drops below the
+    # budget; for spacing beyond the grid's extent the single remaining band
+    # slides off the grid, so this always terminates.
+    lo = float(w)
+    hi = extent + w
+    grow = 0
+    while count(hi) >= n_treat:
+        hi *= 2.0
+        grow += 1
+        if grow > 80:
+            raise RuntimeError(
+                f"{condition}: no spacing brackets n_treat={n_treat} (w={w}, phi={phi})"
+            )
+
+    n_lo = count(lo)
+    for _ in range(_STRIP_BISECTION_STEPS):
+        if n_lo == n_treat:
+            break
+        mid = 0.5 * (lo + hi)
+        n_mid = count(mid)
+        if n_mid >= n_treat:
+            lo, n_lo = mid, n_mid
+        else:
+            hi = mid
+    if n_lo < n_treat:
+        raise RuntimeError(
+            f"{condition}: bisection failed to converge (w={w}, phi={phi}, n_treat={n_treat})"
+        )
+
+    return _trim_to_budget(_band_mask(t, t_min, w, lo, phase), occupied, n_treat, rng)
+
+
+def _strips_perp(rng, occupied, n_treat, **params):
+    return _strips(rng, occupied, n_treat, parallel=False, **params)
+
+
+def _strips_para(rng, occupied, n_treat, **params):
+    return _strips(rng, occupied, n_treat, parallel=True, **params)
+
+
 _GENERATORS = {
     "none": _none,
     "random": _random,
+    "patches": _patches,
+    "strips_perp": _strips_perp,
+    "strips_para": _strips_para,
 }
+
+# The nine clustering-scale levels of §6.2 / §10.1 D2, so an experiment grid
+# can enumerate them: (condition, geometry_params).
+CLUSTERING_LEVELS = tuple(
+    [("patches", {"k": k}) for k in (4, 8, 16)]
+    + [("strips_perp", {"w": w}) for w in (4, 8, 16)]
+    + [("strips_para", {"w": w}) for w in (4, 8, 16)]
+)
 
 # Conditions with a live generator. Tests iterate this so SPEC-10 and SPEC-11
 # extend coverage by registering, not by editing tests.

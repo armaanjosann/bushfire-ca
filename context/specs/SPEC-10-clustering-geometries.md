@@ -1,16 +1,16 @@
 ---
 id: SPEC-10
 title: Clustering-scale family — patches, strips_perp, strips_para
-status: not started
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)
 depends_on: [SPEC-09]
 implements: [§4.2, §10.1 D2, §11]
-issue:
+issue: "#10"
 branch: spec/SPEC-10-clustering-geometries
 pr:
-decisions: [DEC-007, DEC-008]
+decisions: [DEC-007, DEC-008, DEC-024, DEC-025]
 ---
 
 # SPEC-10 — Clustering-scale family
@@ -72,19 +72,19 @@ Further:
 
 ## Acceptance criteria
 
-- [ ] All nine levels are constructible and each satisfies the budget tolerance over ≥50 seeds at `p ∈ {0.4, 0.55, 0.7}` and `b ∈ {0.05, 0.15, 0.30}`.
-- [ ] At `phi = 0`, `strips_perp` and `strips_para` at the same `w`, `b` and seed produce masks that are transposes of each other in shape statistics — same treated count within tolerance, orthogonal band orientation.
-- [ ] The bisection on spacing terminates for every `(w, b, p)` combination in the Experiment 1 grid, and raises rather than looping if it cannot converge.
-- [ ] A test checks band orientation at `phi ∈ {0, π/4, π/2}`: at `phi = π/4` both strip conditions produce diagonal bands (perpendicular and parallel to the wind respectively) and meet the budget tolerance (DEC-008).
-- [ ] `patches` output does not depend on `phi` or `settlement_side`.
-- [ ] Band phase offset differs across replicates at the same config but is reproducible for a given seed.
-- [ ] `patches` with `k=16` at low `b` still hits the budget — the un-treat-the-excess step is exercised.
-- [ ] Mean connected-component size increases monotonically across `random` → `patches(4)` → `patches(8)` → `patches(16)`, confirming the clustering-scale axis is ordered as §11 claims.
-- [ ] I6, I7, I8 still pass for all nine levels.
+- [x] All nine levels are constructible and each satisfies the budget tolerance over ≥50 seeds at `p ∈ {0.4, 0.55, 0.7}` and `b ∈ {0.05, 0.15, 0.30}`.
+- [x] At `phi = 0`, `strips_perp` and `strips_para` at the same `w`, `b` and seed produce masks that are transposes of each other in shape statistics — same treated count within tolerance, orthogonal band orientation.
+- [x] The bisection on spacing terminates for every `(w, b, p)` combination in the Experiment 1 grid, and raises rather than looping if it cannot converge.
+- [x] A test checks band orientation at `phi ∈ {0, π/4, π/2}`: at `phi = π/4` both strip conditions produce diagonal bands (perpendicular and parallel to the wind respectively) and meet the budget tolerance (DEC-008).
+- [x] `patches` output does not depend on `phi` or `settlement_side`.
+- [x] Band phase offset differs across replicates at the same config but is reproducible for a given seed.
+- [x] `patches` with `k=16` at low `b` still hits the budget — the un-treat-the-excess step is exercised.
+- [x] Mean connected-component size increases monotonically across `random` → `patches(4)` → `patches(8)` → `patches(16)`, confirming the clustering-scale axis is ordered as §11 claims.
+- [x] I6, I7, I8 still pass for all nine levels.
 
 ## Invariants
 
-- [ ] None owned. I6, I7 and I8 (SPEC-09) must continue to pass across all nine new levels — extend the parametrisation of SPEC-09's tests only if SPEC-09 wrote them to be extended; otherwise raise a DEC.
+- [x] None owned. I6, I7 and I8 (SPEC-09) must continue to pass across all nine new levels — extend the parametrisation of SPEC-09's tests only if SPEC-09 wrote them to be extended; otherwise raise a DEC.
 
 ## Verification
 
@@ -105,10 +105,10 @@ PY
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR
 - [ ] `status` updated in this file and in `progress-tracker.md`
 - [ ] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)

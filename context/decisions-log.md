@@ -486,3 +486,47 @@ Two smaller points from the same spec, recorded here rather than in separate ent
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-024 — Strips: bisection then random trim; sub-band budgets place one thinned band
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (SPEC-10)
+- **Spec:** SPEC-10
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** §4.2 builds the strip conditions by bisecting on band spacing "until the occupied-cell count hits `n_treat`". Two things the construction does not say. (1) The count is a step function of spacing: at `phi = 0` every band edge sits on an integer column, so moving the spacing changes the count by whole columns (~140 occupied cells at `L=256`, `p=0.55`), while the shared tolerance at `b=0.15` is ~55 cells. Bisection alone cannot always land within tolerance. (2) Below one band's worth of budget no spacing hits `n_treat` at all: at `w=16`, `b=0.05`, `L=256` a single full band holds ~1.25× the budget. SPEC-10's notes ask for this to be decided and stated rather than left to the bisection.
+
+**Decision.**
+
+- **Spacing is bounded below by `w`.** Touching bands are full coverage, which already exceeds any budget, so bands never overlap and the "spacing below `w`" case in SPEC-10's notes cannot arise.
+- **Bisection then trim.** The bisection (64 steps, or fewer when it lands exactly) finds the largest spacing whose count is still `>= n_treat`; the excess is then un-treated uniformly at random inside the bands, so the realised count is exact. This is the rule §4.2 already gives `patches` for its excess, applied to strips. It costs at most one band-edge's worth of cells: measured over the Experiment 1 grid at `L=256` (20 seeds, `phi = -π/2`), mean 0.3–3.2 % of `n_treat`, worst 7.6 %, with the largest values at `b=0.05` where there are fewest bands.
+- **Sub-band budgets.** If a single full band already holds `>= n_treat` occupied cells, one band of width `w` is placed at a uniform random position along the band coordinate, fully on the grid, and thinned at random to `n_treat`. The alternative — letting the bisection push the spacing past the grid so the last band slides off the far edge — was implemented first and rejected: it pins the band to the downwind edge on every replicate, which under `"random_cell"` ignition makes that treatment protect nothing for a reason that has nothing to do with geometry. In the Experiment 1 grid this branch is taken **only** for `strips_perp`/`strips_para` at `w=16`, `b=0.05` (all 20 of 20 seeds at both `p=0.45` and `p=0.70`), where the band is thinned by ~25 %. No other `(w, b)` cell reaches it.
+- **Phase.** One `rng.random()` draw per replicate is the phase: offset `phase * spacing` in the bisection branch, position `phase * (extent - w)` in the single-band branch. The bracket search and bisection are pure in that draw; the trim is the only other rng use.
+- **Raises rather than loops.** The bracket search doubles the spacing at most 80 times and the bisection runs at most 64 steps; either limit raises `RuntimeError`.
+
+**Flag for the report.** `strips(w=16)` at `b=0.05` is a single band with a quarter of its cells removed, which is a different object from the multi-band pattern at every other budget. Methods should say so in one line; the clustering-scale reading of that one cell is weaker than the rest of the axis.
+
+**Context impact.** none — §4.2's construction text is unchanged; this records how its two silent cases are resolved.
+
+**Commit.** pending
+
+### DEC-025 — Defaults and placement details for the clustered generators
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (SPEC-10)
+- **Spec:** SPEC-10 (touches SPEC-09's tests)
+- **Type:** deviation
+- **Status:** resolved
+
+Small decisions from the same spec, recorded together.
+
+- **`patches` defaults `k=4`; strips default `phi=0.0` when the key is absent.** §4.2 gives `w` a default of 4 "so a config is constructible" but gives `k` none, and DEC-008 says the call site always passes `phi`. SPEC-09's I7 and I8 tests iterate `geometries.IMPLEMENTED` calling `generate` with no parameters at all, and SPEC-10 may not edit them. Both defaults mirror an existing default (`w=4`, `Config.phi=0.0`) and are never relied on by an experiment grid, which always sets `k`/`w` explicitly and passes `cfg.phi`.
+- **`patches` blocks are placed wholly inside the grid** — top-left uniform on `[0, L-k]` per axis — so every block covers exactly `k*k` cells. §4.2 says "uniformly random top-left positions" without saying whether a block may hang off the edge; whole blocks keep the clustering scale honest at the boundary. `k > L` raises.
+- **`geometries.CLUSTERING_LEVELS`** is a tuple of the nine `(condition, params)` levels of §6.2 so an experiment grid enumerates them from one place. Additive; no signature change.
+- **SPEC-09's `test_reserved_params_are_accepted_and_ignored`** asserted every implemented condition returns the same mask with and without `phi`/`settlement_side`. That is false for strips by construction (DEC-008). It is split into "accepted" (every condition) and "ignored" (`none`, `random`, `patches`), with strips' use of `phi` tested on its own. `tests/test_geometries.py` is in SPEC-10's may-touch list.
+- **Realised counts are exact** for all nine levels, not merely within tolerance, because every path ends in the shared trim. The budget helper's tolerance therefore only ever bites if a future generator skips the trim.
+
+**Context impact.** none
+
+**Commit.** pending
