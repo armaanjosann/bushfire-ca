@@ -1,15 +1,15 @@
 ---
 id: SPEC-03
 title: Step function and run_fire
-status: in review
+status: done
 owner: Aaron
 reviewer: Armaan
 phase: P1 — Model core (Sprint 1)
 depends_on: [SPEC-01, SPEC-02]
 implements: [§3.3, §3.7, §4.1, §8]
-issue:
+issue: [#3](https://github.com/armaanjosann/bushfire-ca/issues/3)
 branch: spec/SPEC-03-step-function
-pr:
+pr: "#23"
 decisions: [DEC-006, DEC-013]
 ---
 
@@ -87,22 +87,22 @@ Implement §3.3 exactly. The semantics that must be preserved, restated only bec
 
 ## Acceptance criteria
 
-- [ ] A fire at `p = 0.6`, `L = 128` runs to extinction with `truncated == False`.
-- [ ] No Python-level loop over cells anywhere in the step; the only loop is over the eight neighbour offsets and over time.
-- [ ] `run_fire` called twice on the same `Config` returns equal values in every field.
-- [ ] `run_fire` does not accept, and cannot be passed, an external `rng`.
-- [ ] `cfg.max_steps is None` resolves to `8 * cfg.L`.
-- [ ] A run truncated by an artificially low `max_steps` reports `truncated == True` and non-zero `still_burning_cells`, and `burned_cells` excludes them.
-- [ ] `p = 0` returns a zero-burn run without raising.
-- [ ] Every run populates `n_cells`, `n_occupied`, `n_treated`, `burned_cells`, `still_burning_cells`, `steps`, `truncated`; `ignition_y`/`ignition_x` are set under `"random_cell"` and `None` under `"edge"` (DEC-006).
-- [ ] With `capture_scar=True`, `ignition_step >= 0` exactly where `scar` is `BURNING` or `BURNT`, and the ignition cells are `0`. Under the I3 settings, `ignition_step` equals Chebyshev distance from the ignition cell. With `capture_scar=False`, `scar` and `ignition_step` are both `None` (DEC-013).
-- [ ] The bounding-box path gives results identical to a full-grid path on the same seed (keep a slow reference implementation in the test file for this comparison).
+- [x] A fire at `p = 0.6`, `L = 128` runs to extinction with `truncated == False`.
+- [x] No Python-level loop over cells anywhere in the step; the only loop is over the eight neighbour offsets and over time.
+- [x] `run_fire` called twice on the same `Config` returns equal values in every field.
+- [x] `run_fire` does not accept, and cannot be passed, an external `rng`.
+- [x] `cfg.max_steps is None` resolves to `8 * cfg.L`.
+- [x] A run truncated by an artificially low `max_steps` reports `truncated == True` and non-zero `still_burning_cells`, and `burned_cells` excludes them.
+- [x] `p = 0` returns a zero-burn run without raising.
+- [x] Every run populates `n_cells`, `n_occupied`, `n_treated`, `burned_cells`, `still_burning_cells`, `steps`, `truncated`; `ignition_y`/`ignition_x` are set under `"random_cell"` and `None` under `"edge"` (DEC-006).
+- [x] With `capture_scar=True`, `ignition_step >= 0` exactly where `scar` is `BURNING` or `BURNT`, and the ignition cells are `0`. Under the I3 settings, `ignition_step` equals Chebyshev distance from the ignition cell. With `capture_scar=False`, `scar` and `ignition_step` are both `None` (DEC-013).
+- [x] The bounding-box path gives results identical to a full-grid path on the same seed (keep a slow reference implementation in the test file for this comparison).
 
 ## Invariants
 
-- [ ] **I2 determinism** — run any config twice; every `RunResult` field equal.
-- [ ] **I3 deterministic front** — `p=1, beta=1, kappa=0, diagonal_factor=False`: the front is a square expanding exactly 1 cell/step in Chebyshev distance. Assert Chebyshev growth **only** in the `diagonal_factor=False` case; with it True the front is not square (§2 O3, O6).
-- [ ] **I9 conservation** — `burned_cells + still_burning_cells <= n_occupied`, and no cell leaves `BURNT`.
+- [x] **I2 determinism** — run any config twice; every `RunResult` field equal.
+- [x] **I3 deterministic front** — `p=1, beta=1, kappa=0, diagonal_factor=False`: the front is a square expanding exactly 1 cell/step in Chebyshev distance. Assert Chebyshev growth **only** in the `diagonal_factor=False` case; with it True the front is not square (§2 O3, O6).
+- [x] **I9 conservation** — `burned_cells + still_burning_cells <= n_occupied`, and no cell leaves `BURNT`.
 
 ## Verification
 
@@ -121,13 +121,13 @@ PY
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

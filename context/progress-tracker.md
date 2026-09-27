@@ -24,17 +24,17 @@ Full definitions in `workflow-rules.md` §4.
 
 | Spec | Title | Owner | Phase | Status | Depends on | PR | Decisions |
 |---|---|---|---|---|---|---|---|
-| SPEC-01 | Repo skeleton, entry point, model contracts | Aaron | P0 — Foundation | `in review` | — |  | DEC-002 |
-| SPEC-02 | Lattice initialisation, ignition, settlement | Aaron | P0 — Foundation | `in review` | SPEC-01 |  | DEC-007, DEC-008 |
-| SPEC-03 | Step function and `run_fire` | Aaron | P1 — Model core | `in review` | SPEC-01, SPEC-02 |  | DEC-006, DEC-013 |
-| SPEC-04 | Metrics and scar statistics | Armaan | P1 — Model core | `in review` | SPEC-03 |  | DEC-006, DEC-007, DEC-019, DEC-020, DEC-021, DEC-022 |
+| SPEC-01 | Repo skeleton, entry point, model contracts | Aaron | P0 — Foundation | `done` | — |  | DEC-002 |
+| SPEC-02 | Lattice initialisation, ignition, settlement | Aaron | P0 — Foundation | `done` | SPEC-01 |  | DEC-007, DEC-008 |
+| SPEC-03 | Step function and `run_fire` | Aaron | P1 — Model core | `done` | SPEC-01, SPEC-02 | #23 | DEC-006, DEC-013 |
+| SPEC-04 | Metrics and scar statistics | Armaan | P1 — Model core | `done` | SPEC-03 | #24 | DEC-006, DEC-007, DEC-019, DEC-020, DEC-021, DEC-022 |
 | SPEC-05 | Experiment harness | Aaron | P2 — Harness & validation | `not started` | SPEC-03, SPEC-04 |  | DEC-006, DEC-009 |
 | SPEC-06 | `p_c` estimation, FSS, `p_rel` resolver | Armaan | P2 — Harness & validation | `not started` | SPEC-05 |  | DEC-004 |
 | SPEC-07 | Experiment 0: percolation validation | Aaron | P2 — Harness & validation | `not started` | SPEC-05, SPEC-06 |  | DEC-001, DEC-004, DEC-014 |
 | SPEC-08 | Figure foundation, validation figure | Armaan | P2 — Harness & validation | `not started` | SPEC-07 |  | DEC-001, DEC-016, DEC-017 |
-| SPEC-09 | Geometry framework, `none`, `random` | Armaan | P3 — Treatment geometries | `in review` | SPEC-02 |  | DEC-007, DEC-008, DEC-023 |
-| SPEC-10 | `patches`, `strips_perp`, `strips_para` | Armaan | P3 — Treatment geometries | `in review` | SPEC-09 |  | DEC-007, DEC-008, DEC-024, DEC-025 |
-| SPEC-11 | `buffer` | Armaan | P3 — Treatment geometries | `in review` | SPEC-02, SPEC-09 |  | DEC-007, DEC-026 |
+| SPEC-09 | Geometry framework, `none`, `random` | Armaan | P3 — Treatment geometries | `done` | SPEC-02 | #27 | DEC-007, DEC-008, DEC-023 |
+| SPEC-10 | `patches`, `strips_perp`, `strips_para` | Armaan | P3 — Treatment geometries | `done` | SPEC-09 | #27 | DEC-007, DEC-008, DEC-024, DEC-025 |
+| SPEC-11 | `buffer` | Armaan | P3 — Treatment geometries | `done` | SPEC-02, SPEC-09 | #27 | DEC-007, DEC-026 |
 | SPEC-12 | Settlement pilot, coarse Exp 1, freeze | Aaron | P4 — Parameter freeze | `not started` | SPEC-05, SPEC-06, SPEC-10, SPEC-11, SPEC-19 |  | DEC-003, DEC-007, DEC-011, DEC-015 |
 | SPEC-13 | Experiment 1: geometry × budget | Aaron | P5 — Full experiments | `not started` | SPEC-12 |  | DEC-003, DEC-009, DEC-011, DEC-013, DEC-015 |
 | SPEC-14 | Experiment 2: threshold shift | Armaan | P5 — Full experiments | `not started` | SPEC-06, SPEC-13, SPEC-19 |  | DEC-003, DEC-004, DEC-005, DEC-011, DEC-012 |

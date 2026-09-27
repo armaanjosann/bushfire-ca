@@ -1,15 +1,15 @@
 ---
 id: SPEC-09
 title: Geometry framework, none, random
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)
 depends_on: [SPEC-02]
 implements: [§4.2]
-issue: "#9"
+issue: [#9](https://github.com/armaanjosann/bushfire-ca/issues/9)
 branch: spec/SPEC-09-geometry-framework
-pr:
+pr: "#27"
 decisions: [DEC-007, DEC-008, DEC-023]
 ---
 
@@ -113,9 +113,9 @@ PY
 - [x] Named invariants pass locally
 - [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [x] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

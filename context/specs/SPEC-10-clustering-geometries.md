@@ -1,15 +1,15 @@
 ---
 id: SPEC-10
 title: Clustering-scale family — patches, strips_perp, strips_para
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)
 depends_on: [SPEC-09]
 implements: [§4.2, §10.1 D2, §11]
-issue: "#10"
+issue: [#10](https://github.com/armaanjosann/bushfire-ca/issues/10)
 branch: spec/SPEC-10-clustering-geometries
-pr:
+pr: "#27"
 decisions: [DEC-007, DEC-008, DEC-024, DEC-025]
 ---
 
@@ -109,9 +109,9 @@ PY
 - [x] Named invariants pass locally
 - [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [x] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

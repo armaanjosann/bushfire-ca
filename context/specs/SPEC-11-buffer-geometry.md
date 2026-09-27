@@ -1,15 +1,15 @@
 ---
 id: SPEC-11
 title: Buffer geometry
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P3 — Treatment geometries (Sprint 2)
 depends_on: [SPEC-02, SPEC-09]
 implements: [§4.2, §3.6]
-issue: "#11"
+issue: [#11](https://github.com/armaanjosann/bushfire-ca/issues/11)
 branch: spec/SPEC-11-buffer-geometry
-pr:
+pr: "#27"
 decisions: [DEC-007, DEC-026]
 ---
 
@@ -103,9 +103,9 @@ PY
 - [x] Named invariants pass locally
 - [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [x] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

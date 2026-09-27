@@ -1,15 +1,15 @@
 ---
 id: SPEC-04
 title: Metrics and scar statistics
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P1 — Model core (Sprint 1)
 depends_on: [SPEC-03]
 implements: [§4.3, §3.5, §3.6]
-issue: "#4"
+issue: [#4](https://github.com/armaanjosann/bushfire-ca/issues/4)
 branch: spec/SPEC-04-metrics
-pr:
+pr: "#24"
 decisions: [DEC-006, DEC-007, DEC-019, DEC-020, DEC-021, DEC-022]
 ---
 
@@ -113,9 +113,9 @@ pytest -q tests/test_invariants.py -k "i4 or i5"
 - [x] Named invariants pass locally
 - [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [x] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

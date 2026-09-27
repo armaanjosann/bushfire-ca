@@ -1,15 +1,15 @@
 ---
 id: SPEC-01
 title: Repo skeleton, entry point, and model contracts
-status: in review
+status: done
 owner: Aaron
 reviewer: Armaan
 phase: P0 — Foundation (Sprint 1)
 depends_on: []
 implements: [§9, §4.7, §4.1, §4.4, §3.4, §8]
-issue:
+issue: [#1](https://github.com/armaanjosann/bushfire-ca/issues/1)
 branch: spec/SPEC-01-foundation
-pr:
+pr: "#20"
 decisions: [DEC-002]
 ---
 
@@ -116,8 +116,8 @@ git check-ignore -v results/.gitkeep; echo "expect: no match (results is tracked
 - [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [x] Any contract change applied to `project-context.md` in this same PR (none needed — no contract changed)
 - [x] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

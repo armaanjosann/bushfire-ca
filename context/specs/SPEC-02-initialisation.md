@@ -1,15 +1,15 @@
 ---
 id: SPEC-02
 title: Lattice initialisation, ignition, settlement
-status: in review
+status: done
 owner: Aaron
 reviewer: Armaan
 phase: P0 — Foundation (Sprint 1)
 depends_on: [SPEC-01]
 implements: [§3.1, §3.2, §3.5, §3.6, §4.1]
-issue:
+issue: [#2](https://github.com/armaanjosann/bushfire-ca/issues/2)
 branch: spec/SPEC-02-initialisation
-pr:
+pr: "21"
 decisions: [DEC-007, DEC-008]
 ---
 
@@ -123,8 +123,8 @@ PY
 - [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [x] Any contract change applied to `project-context.md` in this same PR (none needed — no contract changed)
 - [x] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 
