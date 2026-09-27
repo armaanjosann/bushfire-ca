@@ -549,3 +549,126 @@ The unbounded failure is not the kernel. Two boundary effects dominate: above th
 **Context impact.** none — §7 I5's wording is unchanged; the operating point is recorded here and in the test docstring. If the team prefers §7 to state the operating point, that is a one-line human edit.
 
 **Commit.** pending
+
+### DEC-023 — I7's "over a results frame" half deferred to SPEC-05
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (SPEC-09)
+- **Spec:** SPEC-09 (and SPEC-05)
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** §7 I7 reads "assert in the generator and again over the results frame", and SPEC-09 owns the I7 test. There is no results frame until the harness (SPEC-05) writes one, and SPEC-09 may not touch `src/experiments.py`.
+
+**Decision.** `tests/test_invariants.py::test_i7_budget_parity` covers the generator half: `check_mask` asserts the budget live inside `generate`, and the test re-checks `n_treated` against `round(b * n_occupied)` end-to-end through `run_fire` for every condition in `geometries.IMPLEMENTED`. The frame half — the same check over every row of a written parquet — is SPEC-05's to add when the frame exists; it can be a second assertion in the same test function.
+
+Two smaller points from the same spec, recorded here rather than in separate entries:
+
+- `generate` validates the condition string **before** the `n_treat == 0` early return, so an unknown condition raises even at `b = 0`. SPEC-01's stub returned all-False for any string at zero budget. An unknown string is not a condition, and failing at config time is cheaper than failing at the first `b > 0` run.
+- `geometries.IMPLEMENTED` (the conditions with a registered generator) and `geometries.CONDITIONS` (every condition the schema knows) are module-level tuples so SPEC-10 and SPEC-11 extend test coverage by registering a generator, not by editing SPEC-09's tests. No §4.2 signature changes.
+
+**Numbering note.** DEC-019 to DEC-022 are on the SPEC-04 branch, in flight at the same time as this one. Whichever merges second will need a trivial conflict resolution at the end of this file.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-024 — Strips: bisection then random trim; sub-band budgets place one thinned band
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (SPEC-10)
+- **Spec:** SPEC-10
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** §4.2 builds the strip conditions by bisecting on band spacing "until the occupied-cell count hits `n_treat`". Two things the construction does not say. (1) The count is a step function of spacing: at `phi = 0` every band edge sits on an integer column, so moving the spacing changes the count by whole columns (~140 occupied cells at `L=256`, `p=0.55`), while the shared tolerance at `b=0.15` is ~55 cells. Bisection alone cannot always land within tolerance. (2) Below one band's worth of budget no spacing hits `n_treat` at all: at `w=16`, `b=0.05`, `L=256` a single full band holds ~1.25× the budget. SPEC-10's notes ask for this to be decided and stated rather than left to the bisection.
+
+**Decision.**
+
+- **Spacing is bounded below by `w`.** Touching bands are full coverage, which already exceeds any budget, so bands never overlap and the "spacing below `w`" case in SPEC-10's notes cannot arise.
+- **Bisection then trim.** The bisection (64 steps, or fewer when it lands exactly) finds the largest spacing whose count is still `>= n_treat`; the excess is then un-treated uniformly at random inside the bands, so the realised count is exact. This is the rule §4.2 already gives `patches` for its excess, applied to strips. It costs at most one band-edge's worth of cells: measured over the Experiment 1 grid at `L=256` (20 seeds, `phi = -π/2`), mean 0.3–3.2 % of `n_treat`, worst 7.6 %, with the largest values at `b=0.05` where there are fewest bands.
+- **Sub-band budgets.** If a single full band already holds `>= n_treat` occupied cells, one band of width `w` is placed at a uniform random position along the band coordinate, fully on the grid, and thinned at random to `n_treat`. The alternative — letting the bisection push the spacing past the grid so the last band slides off the far edge — was implemented first and rejected: it pins the band to the downwind edge on every replicate, which under `"random_cell"` ignition makes that treatment protect nothing for a reason that has nothing to do with geometry. In the Experiment 1 grid this branch is taken **only** for `strips_perp`/`strips_para` at `w=16`, `b=0.05` (all 20 of 20 seeds at both `p=0.45` and `p=0.70`), where the band is thinned by ~25 %. No other `(w, b)` cell reaches it.
+- **Phase.** One `rng.random()` draw per replicate is the phase: offset `phase * spacing` in the bisection branch, position `phase * (extent - w)` in the single-band branch. The bracket search and bisection are pure in that draw; the trim is the only other rng use.
+- **Raises rather than loops.** The bracket search doubles the spacing at most 80 times and the bisection runs at most 64 steps; either limit raises `RuntimeError`.
+
+**Flag for the report.** `strips(w=16)` at `b=0.05` is a single band with a quarter of its cells removed, which is a different object from the multi-band pattern at every other budget. Methods should say so in one line; the clustering-scale reading of that one cell is weaker than the rest of the axis.
+
+**Context impact.** none — §4.2's construction text is unchanged; this records how its two silent cases are resolved.
+
+**Commit.** pending
+
+### DEC-025 — Defaults and placement details for the clustered generators
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (SPEC-10)
+- **Spec:** SPEC-10 (touches SPEC-09's tests)
+- **Type:** deviation
+- **Status:** resolved
+
+Small decisions from the same spec, recorded together.
+
+- **`patches` defaults `k=4`; strips default `phi=0.0` when the key is absent.** §4.2 gives `w` a default of 4 "so a config is constructible" but gives `k` none, and DEC-008 says the call site always passes `phi`. SPEC-09's I7 and I8 tests iterate `geometries.IMPLEMENTED` calling `generate` with no parameters at all, and SPEC-10 may not edit them. Both defaults mirror an existing default (`w=4`, `Config.phi=0.0`) and are never relied on by an experiment grid, which always sets `k`/`w` explicitly and passes `cfg.phi`.
+- **`patches` blocks are placed wholly inside the grid** — top-left uniform on `[0, L-k]` per axis — so every block covers exactly `k*k` cells. §4.2 says "uniformly random top-left positions" without saying whether a block may hang off the edge; whole blocks keep the clustering scale honest at the boundary. `k > L` raises.
+- **`geometries.CLUSTERING_LEVELS`** is a tuple of the nine `(condition, params)` levels of §6.2 so an experiment grid enumerates them from one place. Additive; no signature change.
+- **SPEC-09's `test_reserved_params_are_accepted_and_ignored`** asserted every implemented condition returns the same mask with and without `phi`/`settlement_side`. That is false for strips by construction (DEC-008). It is split into "accepted" (every condition) and "ignored" (`none`, `random`, `patches`), with strips' use of `phi` tested on its own. `tests/test_geometries.py` is in SPEC-10's may-touch list.
+- **Realised counts are exact** for all nine levels, not merely within tolerance, because every path ends in the shared trim. The budget helper's tolerance therefore only ever bites if a future generator skips the trim.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-026 — Buffer: block placement, unachievable budgets, and SPEC-09's tests made extensible
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (SPEC-11)
+- **Spec:** SPEC-11 (touches SPEC-09's tests on the SPEC-09 branch)
+- **Type:** deviation
+- **Status:** resolved
+
+- **Block placement is re-derived, not imported.** The generator locates the block as rows/cols `[L//2 - side//2, L//2 - side//2 + side)` from `params["settlement_side"]`, the same arithmetic `initial_grids` uses. It does not import `SETTLEMENT_SIDE` or infer the block from `occupied` (SPEC-11 interface contract, DEC-007). A test checks the generator's first ring against the block `initial_grids` actually places for sides 8, 16, 32 and 48. A missing `settlement_side` key raises; there is no default, because a buffer around nothing is the failure the spec says to assert against.
+- **Ring 0 is never treated**, whatever `occupied` says there. In a real run the block is `SETTLEMENT` and unoccupied; if a caller passes a field with occupied cells inside the block they are skipped.
+- **Unachievable budgets raise `ValueError`** naming the shortfall: if fewer occupied cells lie outside the block than `n_treat`, the rings run off every edge without reaching the budget. `generate` already bounds `n_treat` by the total occupied count, so this can only happen when cells inside the block count toward that total, i.e. an inconsistent field.
+- **The outer ring alone is filled at random**; inner rings stay complete. The realised count is exact, so the shared tolerance never bites. One `rng.choice` per call.
+- **SPEC-09's I7 and I8 tests were amended on the SPEC-09 branch** (commit "test(spec09): I7 and I8 written to be extended by settlement conditions"), not from this branch: I7 now sets `settlement=True` for `buffer` (§4.4 rejects the config otherwise) and I8 carves the default block out of its random field and passes `phi`/`settlement_side` as the call site does. SPEC-11's frontmatter says to raise a DEC rather than edit that file; the file was edited on the spec that owns it, and SPEC-10 and SPEC-11 were rebased on top. SPEC-09's `test_unimplemented_condition_with_budget_raises_not_implemented` (an empty parametrisation once every condition exists) became an assertion that `IMPLEMENTED == CONDITIONS`, and its "reserved params are accepted" case uses a 64-cell grid so a 32-cell block leaves room for rings. Both are in `tests/test_geometries.py`, which SPEC-11 may touch.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-027 — `n_treat == 0` early return lives in `generate()`, not in each generator
+
+- **Date:** 2026-09-27
+- **Raised by:** Aaron (review of SPEC-09, SPEC-10 and SPEC-11)
+- **Spec:** SPEC-09 (also applies to SPEC-10 and SPEC-11)
+- **Type:** deviation
+- **Status:** resolved
+
+**Situation.** SPEC-09's Behaviour section says the `n_treat == 0` early return "must be the first statement of every generator". As implemented, the return is a single check inside `generate()` (after condition validation, DEC-023), before dispatch to any generator. No generator contains its own check. DEC-023 records the validation ordering but not this placement.
+
+**Decision.** Keep it as implemented. The contract SPEC-09 and §7 I6 care about is that `n_treat == 0` returns all-False *without touching `rng`*, for every condition, identically. Through the public API (`generate`, and so `run_fire`) that holds: no generator is ever entered at zero budget, and I6 passes with byte-identical results across all six conditions. A single choke point also means a future generator cannot forget the check, which is the failure I6 exists to catch.
+
+**Consequence.** The guarantee holds only through `generate()`. The per-condition functions (`_random`, `_patches`, `_strips`, `_buffer`) are private and are not safe to call directly at `n_treat == 0`. Nothing outside `src/geometries.py` and its tests should call them. A generator added by a later spec is covered automatically if it is registered in `_GENERATORS`.
+
+**Context impact.** none. §4.2 signatures and §7 I6 are unchanged; this records how the invariant is met.
+
+**Commit.** pending
+
+### DEC-028 — Clustering-scale ordering verified at L=256; not guaranteed at L=128, b=0.05
+
+- **Date:** 2026-09-27
+- **Raised by:** Aaron (review of SPEC-10)
+- **Spec:** SPEC-10
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** SPEC-10's acceptance criteria require mean connected-component size to increase across `random` → `patches(4)` → `patches(8)` → `patches(16)` (§11). The original test checked this at one point only (`L=128`, `p=0.55`, `b=0.15`, 3 seeds), so it could not say where the claim holds. Review found the ordering broke at `L=128`, `b=0.05`, `p ≤ 0.46`, where `patches(16)` came out at or below `patches(8)` (e.g. `p=0.41`: 6.3 for `k=8`, 5.9 for `k=16`).
+
+**Decision.** The ordering claim stands, at the scale the experiments use. A sweep of `p ∈ {0.30, 0.36, 0.41, 0.46, 0.55, 0.70}` × `b ∈ {0.05 … 0.30}` at `L=128` (10 seeds) showed the ordering holds everywhere except `b=0.05` at `p ≤ 0.46`. Re-run at `L=256` (8 seeds), every point checked is ordered, including `b=0.05` at `p ∈ {0.36, 0.41, 0.46}`. The `L=128` failure is a finite-size effect: at `b=0.05` a `16×16` block is a large share of a small budget, so few blocks are placed and the trim removes much of the last one. It is not a defect in `patches`.
+
+`test_component_size_increases_with_clustering_scale` is now parametrised over `p ∈ {0.36, 0.41, 0.46, 0.55, 0.70}` × `b ∈ {0.05, 0.15, 0.30}` at `L=256` (4 seeds), covering the `p_rel ∈ {−0.05, 0, +0.05}` range of Experiment 1 (`p_c ≈ 0.41`) plus `p=0.70`. A second test, `test_strips_raise_when_no_spacing_brackets_the_budget`, covers the bracket-search `RuntimeError` in `_strips`, which had no test. Both are in `tests/test_geometries.py`, in SPEC-10's may-touch list. No code change.
+
+**Flag.** Pilots or quick checks run at `L=128` with `b=0.05` should not be read against the §11 ordering claim. Reported results use `L=256`.
+
+**Context impact.** none
+
+**Commit.** pending
