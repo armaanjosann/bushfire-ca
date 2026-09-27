@@ -463,3 +463,89 @@ Consequently the "re-running produces byte-identical output" criterion in SPEC-0
 **Context impact.** `project-context.md` §9 (the figure clause and the notebook clause).
 
 **Commit.** pending
+
+### DEC-019 — Scar metrics count `BURNT` cells only; still-burning cells at truncation are excluded
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (agent-assisted, SPEC-04)
+- **Spec:** SPEC-04
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** §3.5 defines `spanned` and `reached_edge` as "did any cell ... burn", and SPEC-04 says scar statistics are computed over `BURNT` cells, but neither says what to do with cells still `BURNING` when a run is truncated (§3.7). SPEC-03 already settled the same question for `burned_cells` (`BURNT` only; folding in `still_burning` was the prototype bug).
+
+**Decision.** Every function in `src/metrics.py` that reads a state grid — `spanned`, `reached_edge`, `scar_second_moments`, `scar_centroid` — counts `BURNT` cells only, matching `burned_cells`. A truncated run's still-burning cells contribute to `still_burning_cells` and nothing else. For the experiments this is moot: G2 requires `truncated` false throughout, and with `tau=1` every ignited cell is `BURNT` at extinction.
+
+**Rationale.** One rule for all scar-shaped quantities, and the same rule SPEC-03 chose, so `burned_fraction` and `spanned` can never disagree about which cells count.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-020 — Settlement ring check includes step 0
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (agent-assisted, SPEC-04)
+- **Spec:** SPEC-04
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** §3.6 says `settlement_reached` is True iff a ring cell enters `BURNING` "at any time during the run". Under `"random_cell"` ignition the ignition cell may itself lie on the ring (§3.6 forbids excluding regions from ignition), in which case it is `BURNING` at `t=0` before any step runs. SPEC-04 specifies only the per-step check.
+
+**Decision.** `run_fire` checks the ring against the initial state before the loop and, if a ring cell is already burning, sets `settlement_reached=True`, `settlement_reached_step=0`. The per-step check then tests only newly-ignited cells in the current bounding box, so it costs one small boolean `and` per step and never touches `rng`.
+
+**Rationale.** A fire that starts on the settlement's doorstep has reached it; recording it as step 0 keeps `settlement_reached_step` a true first-reach time rather than a first-reach-after-step-1 time.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-021 — SPEC-03's `test_derived_fields_default_none` rewritten (may-touch deviation)
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (agent-assisted, SPEC-04)
+- **Spec:** SPEC-04 (test belongs to SPEC-03)
+- **Type:** deviation
+- **Status:** resolved
+
+**Situation.** `tests/test_step.py::test_derived_fields_default_none` (SPEC-03) asserted that `run_fire` returns every derived field as `None`. SPEC-04's acceptance criteria require the opposite (DEC-006), so the test fails the moment SPEC-04 is implemented. `tests/test_step.py` is not in SPEC-04's may-touch list. The `workflow-rules.md` §6 stop condition ("an invariant fails and the fix lies outside your spec's permitted files") does not strictly apply — it is a unit test, not an invariant, and the fix is a direct consequence of DEC-006 — but the file boundary is crossed.
+
+**Decision.** The test is renamed `test_derived_fields_dataclass_defaults_are_none` and now asserts what SPEC-03 actually owns: the `RunResult` *declaration* defaults those fields to `None`. The populated-by-`run_fire` behaviour is tested in `tests/test_metrics.py`. No other line of `tests/test_step.py` changed beyond the two imports the new test needs.
+
+**Rationale.** Leaving a permanently-failing test, or deleting it silently, would both be worse than a one-function edit that keeps SPEC-03's intent and points at where the behaviour is now tested. Flagged here so the SPEC-03 owner sees it in review.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-022 — I5 is measured in a bounded-time design; I4 operating point fixed
+
+- **Date:** 2026-09-26
+- **Raised by:** Armaan (agent-assisted, SPEC-04)
+- **Spec:** SPEC-04
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** §7 I5 states the mean scar centroid projection on `phi` is strictly increasing over `kappa ∈ {0, 1, 2, 4}` but fixes no operating point, and SPEC-04 says only "L=128" and "raise the replicate count before concluding the wind kernel is wrong". Measured on runs to extinction the invariant does **not** hold at any fuel density tried, and not marginally (L=128, `phi=0`, `"random_cell"`, STUDY defaults; mean projection in cells ± se):
+
+| `p` | `max_steps` | R | κ=0 | κ=1 | κ=2 | κ=4 | monotone |
+|---|---|---|---|---|---|---|---|
+| 0.50 | ∞ | 60 | −0.9 ± 3.8 | 30.0 ± 3.3 | 20.6 ± 2.8 | 8.6 ± 1.1 | no |
+| 0.60 | ∞ | 60 | −6.8 ± 4.7 | 29.8 ± 2.8 | 28.8 ± 3.2 | 23.4 ± 3.0 | no |
+| 0.70 | ∞ | 100 | −1.5 ± 3.7 | 9.9 ± 3.2 | 39.2 ± 2.3 | 37.8 ± 2.5 | no |
+| 1.00 | 30 | 100 | −0.3 ± 0.6 | 4.3 ± 0.5 | 14.4 ± 0.5 | 16.8 ± 0.6 | **yes** |
+| 0.80 | 30 | 100 | −0.1 ± 0.5 | 8.0 ± 0.5 | 15.8 ± 0.5 | 16.7 ± 0.5 | yes (marginal) |
+
+The unbounded failure is not the kernel. Two boundary effects dominate: above threshold a `kappa=0` fire burns the whole lattice, so its centroid is the lattice centre whatever the ignition, and a `kappa=4` plume with mean-1-normalised weights has near-zero crosswind/upwind spread, so it either dies in a sparse fuel bed or runs into the downwind edge, both of which cap its displacement. Neither is what I5 is about.
+
+**Decision.**
+
+- **I5** runs at `p=1.0`, `max_steps=30`, `L=128`, `phi=0`, `"random_cell"`, R=200 per `kappa`, STUDY defaults otherwise (`beta=0.8`, so the runs are still stochastic). The test asserts strict monotonicity of the four means and that the κ=4 − κ=0 gap exceeds ten standard errors. The runs are truncated by construction; the test uses `max_steps` for the purpose the field exists (§3.7).
+- **I4** runs at `p=0.55`, `L=128`, `kappa=0`, R=200, to extinction; mean burned fraction ≈ 0.5 so scars are partial and the isotropy check is on real shapes. It asserts the 99% CI of mean(`var_x − var_y`) contains 0 and that mean scar variance exceeds 100 (non-trivial scars). At R=40 the same point read 13 ± 5, which is what the spec's "raise the replicate count first" clause is for; at R=200 it is 1.9 ± 2.4.
+- Both tests carry `@pytest.mark.slow` and take about 5 s and 2.5 s. The `slow` marker is **not registered** because `pytest.ini` is outside SPEC-04's may-touch list; pytest warns but runs. A three-line `pytest.ini` registering it is wanted and is a human's to add.
+
+**Rationale.** A bounded-time measurement is the only one that isolates the wind kernel from the lattice boundary and from extinction, which are the subjects of other invariants (I1, I9) and of the experiments themselves. Reading I5 as a statement about the kernel is also the only reading under which it is an invariant at all rather than a result.
+
+**Context impact.** none — §7 I5's wording is unchanged; the operating point is recorded here and in the test docstring. If the team prefers §7 to state the operating point, that is a one-line human edit.
+
+**Commit.** pending
