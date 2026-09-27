@@ -1,7 +1,7 @@
 ---
 id: SPEC-05
 title: Experiment harness — schema, parallel runner, resume
-status: not started
+status: in progress
 owner: Aaron
 reviewer: Armaan
 phase: P2 — Harness and validation (Sprint 1)
@@ -10,7 +10,7 @@ implements: [§4.5, §5, §8]
 issue:
 branch: spec/SPEC-05-experiment-harness
 pr:
-decisions: [DEC-006, DEC-009]
+decisions: [DEC-006, DEC-009, DEC-029, DEC-030, DEC-031]
 ---
 
 # SPEC-05 — Experiment harness
@@ -62,10 +62,13 @@ A list of `Config`s goes in; `results/exp{N}.parquet` comes out with every §5 c
 As `project-context.md` §4.5. This spec additionally defines, and later specs are written against:
 
 ```python
-def run_configs(cfgs: list[Config], out_path: str, resume: bool = True) -> pd.DataFrame: ...
+def run_configs(cfgs: list[Config], out_path: str, resume: bool = True, *,
+                p_rel: Sequence[float | None] | None = None) -> pd.DataFrame: ...
 def config_run_id(cfg: Config) -> str: ...
 def code_version() -> str: ...
 ```
+
+`p_rel` (DEC-029, DEC-030) is parallel to `cfgs`, same length, default all-null. It is written to the `p_rel` column and is **not** part of `run_id`. `Config` has no `p_rel` field, so this is the only channel by which a threshold-relative grid records its offset.
 
 ## Behaviour
 
@@ -88,7 +91,7 @@ def code_version() -> str: ...
 - [ ] `code_version` is a real git short SHA; the runner refuses to write if it cannot obtain one.
 - [ ] Null cases are actually null: under `"random_cell"`, `spanned` is `<NA>`; under `"edge"`, `reached_edge` and `ignition_y`/`ignition_x` are `<NA>`.
 - [ ] `budget_basis == "occupied"` on every row.
-- [ ] A 16-worker run of 200 configs is faster than serial by a factor of at least 8.
+- [ ] On a machine with at least 4 cores, a parallel run of 200 configs is at least 2x faster than serial and returns identical rows in the same order (DEC-031; was "16 workers, at least 8x").
 
 ## Invariants
 
