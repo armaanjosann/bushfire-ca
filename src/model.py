@@ -256,6 +256,10 @@ def run_fire(cfg: Config, capture_scar: bool = False) -> RunResult:
     mask arithmetic, the expensive part) doesn't change the rng stream and
     a step-for-step full-grid implementation reaches the same result.
     """
+    # Local import: metrics imports the state constants from this module, so a
+    # top-level import here would be circular (SPEC-04, DEC-006).
+    from src import metrics
+
     rng = np.random.default_rng(cfg.seed)
     L = cfg.L
     max_steps = cfg.max_steps if cfg.max_steps is not None else 8 * L
@@ -282,6 +286,17 @@ def run_fire(cfg: Config, capture_scar: bool = False) -> RunResult:
         ignition_step[state == BURNING] = 0
 
     weights = wind_weights(cfg.kappa, cfg.phi, cfg.diagonal_factor)
+
+    # Settlement ring check (SPEC-04, DEC-006). Consults the ring only; never
+    # touches rng or the step. Step 0 covers a random_cell ignition that lands
+    # on the ring itself (§3.6 "at any time during the run", DEC-020).
+    settlement_reached = settlement_reached_step = None
+    ring = None
+    if cfg.settlement:
+        side = cfg.geometry_params.get("settlement_side", SETTLEMENT_SIDE)
+        ring = metrics.settlement_ring(L, side)
+        settlement_reached = bool((state[ring] == BURNING).any())
+        settlement_reached_step = 0 if settlement_reached else None
 
     bbox = _bounding_box(state == BURNING, L)
     step_number = 0
@@ -318,6 +333,11 @@ def run_fire(cfg: Config, capture_scar: bool = False) -> RunResult:
         sub_state[newly_burnt] = BURNT
         sub_state[ignite_mask] = BURNING
 
+        if ring is not None and not settlement_reached:
+            if (ignite_mask & ring[y0:y1, x0:x1]).any():
+                settlement_reached = True
+                settlement_reached_step = step_number
+
         if capture_scar:
             ignition_step[y0:y1, x0:x1][ignite_mask] = step_number
 
@@ -334,6 +354,9 @@ def run_fire(cfg: Config, capture_scar: bool = False) -> RunResult:
     burned_cells = int(np.count_nonzero(state == BURNT))
     still_burning_cells = int(np.count_nonzero(state == BURNING))
 
+    # Derived outcome fields (SPEC-04, DEC-006) with the §3.5 nulls: spanned
+    # only means something under edge ignition, reached_edge only under
+    # random_cell. None here, never a sentinel bool.
     return RunResult(
         n_cells=L * L,
         n_occupied=n_occupied,
@@ -344,6 +367,16 @@ def run_fire(cfg: Config, capture_scar: bool = False) -> RunResult:
         still_burning_cells=still_burning_cells,
         steps=step_number,
         truncated=truncated,
+        burned_fraction=metrics.burned_fraction(burned_cells, L * L),
+        burned_fraction_of_fuel=metrics.burned_fraction_of_fuel(
+            burned_cells, n_occupied
+        ),
+        spanned=metrics.spanned(state) if cfg.ignition == "edge" else None,
+        reached_edge=(
+            metrics.reached_edge(state) if cfg.ignition == "random_cell" else None
+        ),
+        settlement_reached=settlement_reached,
+        settlement_reached_step=settlement_reached_step,
         scar=state.copy() if capture_scar else None,
         ignition_step=ignition_step if capture_scar else None,
     )
