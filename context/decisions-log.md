@@ -548,3 +548,21 @@ Small decisions from the same spec, recorded together.
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-027 — `n_treat == 0` early return lives in `generate()`, not in each generator
+
+- **Date:** 2026-09-27
+- **Raised by:** Aaron (review of SPEC-09, SPEC-10 and SPEC-11)
+- **Spec:** SPEC-09 (also applies to SPEC-10 and SPEC-11)
+- **Type:** deviation
+- **Status:** resolved
+
+**Situation.** SPEC-09's Behaviour section says the `n_treat == 0` early return "must be the first statement of every generator". As implemented, the return is a single check inside `generate()` (after condition validation, DEC-023), before dispatch to any generator. No generator contains its own check. DEC-023 records the validation ordering but not this placement.
+
+**Decision.** Keep it as implemented. The contract SPEC-09 and §7 I6 care about is that `n_treat == 0` returns all-False *without touching `rng`*, for every condition, identically. Through the public API (`generate`, and so `run_fire`) that holds: no generator is ever entered at zero budget, and I6 passes with byte-identical results across all six conditions. A single choke point also means a future generator cannot forget the check, which is the failure I6 exists to catch.
+
+**Consequence.** The guarantee holds only through `generate()`. The per-condition functions (`_random`, `_patches`, `_strips`, `_buffer`) are private and are not safe to call directly at `n_treat == 0`. Nothing outside `src/geometries.py` and its tests should call them. A generator added by a later spec is covered automatically if it is registered in `_GENERATORS`.
+
+**Context impact.** none. §4.2 signatures and §7 I6 are unchanged; this records how the invariant is met.
+
+**Commit.** pending
