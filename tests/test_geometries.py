@@ -381,18 +381,24 @@ def test_patches_raises_rather_than_loops(monkeypatch):
         generate("patches", _rng(), _occupied(), 200, k=4)
 
 
-def test_component_size_increases_with_clustering_scale():
-    # §11: random (scale 1) -> patches(4) -> patches(8) -> patches(16)
-    L, p, b = 128, 0.55, 0.15
+@pytest.mark.parametrize("p", [0.36, 0.41, 0.46, 0.55, 0.70])
+@pytest.mark.parametrize("b", [0.05, 0.15, 0.30])
+def test_component_size_increases_with_clustering_scale(p, b):
+    # §11: random (scale 1) -> patches(4) -> patches(8) -> patches(16), over the
+    # Exp 1 grid: p spans p_c-0.05 .. p_c+0.05 (p_c ~ 0.41) plus 0.70, and b spans
+    # the budget range. Run at the real L=256: at L=128 and b=0.05 patches(16)
+    # falls at or below patches(8) for p <= 0.46 (few blocks, heavy trim), a
+    # finite-size effect that is absent at L=256.
+    L = 256
     means = []
     for condition, params in [("random", {}), ("patches", {"k": 4}), ("patches", {"k": 8}), ("patches", {"k": 16})]:
         sizes = []
-        for seed in range(3):
+        for seed in range(4):
             occ = _occupied(seed=seed, L=L, p=p)
             n_treat = round(b * int(occ.sum()))
             sizes += _component_sizes(generate(condition, _rng(seed), occ, n_treat, **params))
         means.append(np.mean(sizes))
-    assert means[0] < means[1] < means[2] < means[3], means
+    assert means[0] < means[1] < means[2] < means[3], (p, b, means)
 
 
 # --- strips: geometry of the band coordinate --------------------------------
@@ -508,6 +514,17 @@ def test_strips_raise_rather_than_loop_when_bracket_impossible(monkeypatch):
     occ = _occupied()
     with pytest.raises(RuntimeError):
         # budget well above one band's worth, so the bisection path is taken
+        generate("strips_perp", _rng(), occ, int(occ.sum()) // 2, w=4, phi=0.0)
+
+
+def test_strips_raise_when_no_spacing_brackets_the_budget(monkeypatch):
+    # a band mask that covers everything never drops below the budget however
+    # far the spacing is doubled, so the bracket search must give up and raise
+    monkeypatch.setattr(
+        geometries, "_band_mask", lambda t, *a, **k: np.ones(np.shape(t), dtype=bool)
+    )
+    occ = _occupied()
+    with pytest.raises(RuntimeError, match="brackets"):
         generate("strips_perp", _rng(), occ, int(occ.sum()) // 2, w=4, phi=0.0)
 
 

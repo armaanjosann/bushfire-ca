@@ -566,3 +566,23 @@ Small decisions from the same spec, recorded together.
 **Context impact.** none. §4.2 signatures and §7 I6 are unchanged; this records how the invariant is met.
 
 **Commit.** pending
+
+### DEC-028 — Clustering-scale ordering verified at L=256; not guaranteed at L=128, b=0.05
+
+- **Date:** 2026-09-27
+- **Raised by:** Aaron (review of SPEC-10)
+- **Spec:** SPEC-10
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** SPEC-10's acceptance criteria require mean connected-component size to increase across `random` → `patches(4)` → `patches(8)` → `patches(16)` (§11). The original test checked this at one point only (`L=128`, `p=0.55`, `b=0.15`, 3 seeds), so it could not say where the claim holds. Review found the ordering broke at `L=128`, `b=0.05`, `p ≤ 0.46`, where `patches(16)` came out at or below `patches(8)` (e.g. `p=0.41`: 6.3 for `k=8`, 5.9 for `k=16`).
+
+**Decision.** The ordering claim stands, at the scale the experiments use. A sweep of `p ∈ {0.30, 0.36, 0.41, 0.46, 0.55, 0.70}` × `b ∈ {0.05 … 0.30}` at `L=128` (10 seeds) showed the ordering holds everywhere except `b=0.05` at `p ≤ 0.46`. Re-run at `L=256` (8 seeds), every point checked is ordered, including `b=0.05` at `p ∈ {0.36, 0.41, 0.46}`. The `L=128` failure is a finite-size effect: at `b=0.05` a `16×16` block is a large share of a small budget, so few blocks are placed and the trim removes much of the last one. It is not a defect in `patches`.
+
+`test_component_size_increases_with_clustering_scale` is now parametrised over `p ∈ {0.36, 0.41, 0.46, 0.55, 0.70}` × `b ∈ {0.05, 0.15, 0.30}` at `L=256` (4 seeds), covering the `p_rel ∈ {−0.05, 0, +0.05}` range of Experiment 1 (`p_c ≈ 0.41`) plus `p=0.70`. A second test, `test_strips_raise_when_no_spacing_brackets_the_budget`, covers the bracket-search `RuntimeError` in `_strips`, which had no test. Both are in `tests/test_geometries.py`, in SPEC-10's may-touch list. No code change.
+
+**Flag.** Pilots or quick checks run at `L=128` with `b=0.05` should not be read against the §11 ordering claim. Reported results use `L=256`.
+
+**Context impact.** none
+
+**Commit.** pending
