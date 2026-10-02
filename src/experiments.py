@@ -21,7 +21,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.model import Config, RunResult, run_fire
+from src.analysis import PC_PATH, pc_rows, write_pc_estimates
+from src.model import P_C_LITERATURE, Config, RunResult, run_fire
 
 # Run-time tuning. Constants, read at call time and never mutated by this
 # module (§8: no global mutable state).
@@ -316,8 +317,125 @@ def run_configs(cfgs: list[Config], out_path: str, resume: bool = True, *,
 # --- experiment entry points (bodies land in later specs) --------------------
 
 
-def run_exp0():
-    raise NotImplementedError("Experiment 0 (percolation validation) lands in SPEC-07")
+# --- Experiment 0: percolation validation (SPEC-07) ---------------------------
+
+EXP0_PATH = "results/exp0.parquet"
+EXP0_L = (128, 256, 512)
+EXP0_R = 500
+EXP0_P = tuple(round(0.30 + 0.005 * i, 3) for i in range(61))  # 0.300 .. 0.600, §6.2
+I1_TOLERANCE = 0.01  # §7 I1, DEC-014
+
+
+def exp0_grid(sizes: Sequence[int] = EXP0_L, replicates: int = EXP0_R) -> list[Config]:
+    """The §6.2 Experiment 0 configs: PERCOLATION, edge ignition, no treatment.
+
+    Every setting §4.4 pins for PERCOLATION is passed explicitly, so the grid
+    is rejected at construction if any of them ever stopped being what the
+    exact site-percolation reduction needs (§1).
+
+    Each run's seed is its position in the *full* grid (lattice size, then `p`,
+    then replicate), so runs are independent of one another and a run has the
+    same `run_id` whether it came from a subset of `sizes` or a smaller
+    `replicates`. That is what lets a staged run (L=128, 256 first) resume into
+    the full one.
+    """
+    if not 1 <= replicates <= EXP0_R:
+        raise ValueError(f"replicates must be in 1..{EXP0_R}, got {replicates}")
+    unknown = [L for L in sizes if L not in EXP0_L]
+    if unknown:
+        raise ValueError(f"sizes {unknown} are not in the Experiment 0 grid {EXP0_L}")
+    cfgs = []
+    for L in sorted(sizes):
+        i_L = EXP0_L.index(L)
+        for i_p, p in enumerate(EXP0_P):
+            for r in range(replicates):
+                cfgs.append(Config(
+                    L=L, regime="PERCOLATION", p=p,
+                    beta=1.0, kappa=0.0, diagonal_factor=False, tau=1,
+                    condition="none", b=0.0, ignition="edge", settlement=False,
+                    seed=(i_L * len(EXP0_P) + i_p) * EXP0_R + r,
+                ))
+    return cfgs
+
+
+def _check_exp0_frame(df: pd.DataFrame, n_expected: int) -> None:
+    """The Experiment 0 acceptance checks that hold row by row."""
+    problems = []
+    if len(df) != n_expected:
+        problems.append(f"{len(df)} rows, expected {n_expected}")
+    if df["truncated"].any():
+        problems.append("truncated rows present (raise max_steps, do not filter, §3.7)")
+    fixed = {"regime": "PERCOLATION", "beta": 1.0, "kappa": 0.0, "diagonal_factor": False,
+             "b": 0.0, "tau": 1.0, "ignition": "edge", "condition": "none", "settlement": False}
+    for col, want in fixed.items():
+        if not (df[col] == want).all():
+            problems.append(f"{col} is not {want!r} on every row")
+    if df["reached_edge"].notna().any():
+        problems.append("reached_edge is non-null (must be null under edge ignition, §3.5)")
+    if df["spanned"].isna().any():
+        problems.append("spanned is null on some rows")
+    if problems:
+        raise AssertionError("Experiment 0 frame failed: " + "; ".join(problems))
+
+
+def _assert_i1(p_c: float) -> None:
+    """§7 I1, and the only use of P_C_LITERATURE in the experiments (§6.1)."""
+    if abs(p_c - P_C_LITERATURE) > I1_TOLERANCE:
+        raise AssertionError(
+            f"I1 failed: measured PERCOLATION p_c = {p_c:.4f}, literature {P_C_LITERATURE}, "
+            f"tolerance {I1_TOLERANCE}. Stop and debug the model; do not proceed on a "
+            "broken baseline (SPEC-07)."
+        )
+
+
+def run_exp0(sizes: Sequence[int] = EXP0_L, out_path: str = EXP0_PATH,
+             pc_path: str = PC_PATH, replicates: int = EXP0_R) -> pd.DataFrame:
+    """Experiment 0: run the grid, estimate p_c, assert I1.
+
+    With the full `sizes` and `replicates` this writes `out_path`, then appends
+    the four `pc_estimates` rows of DEC-004 (three per-`L` `var_peak` and one
+    `fss_crossing`) through `pc_rows` / `write_pc_estimates`. A subset of
+    `sizes` or fewer `replicates` is a staged or pilot run: it only runs the
+    configs, because a threshold from part of the grid must not be recorded as
+    the Experiment 0 estimate.
+
+    I1 is asserted before anything is written to `pc_estimates.parquet`, so a
+    failing baseline leaves no estimate on record. If the key is already there
+    (a rerun after success) nothing is appended and the stored value is
+    re-checked against I1.
+    """
+    cfgs = exp0_grid(sizes, replicates)
+    df = run_configs(cfgs, out_path)
+    _check_exp0_frame(df, len(cfgs))
+
+    if tuple(sorted(sizes)) != EXP0_L or replicates != EXP0_R:
+        print(f"Experiment 0 staged run: {len(df)} rows in {out_path}; "
+              "no p_c recorded (not the full grid).")
+        return df
+
+    if Path(pc_path).exists():
+        pc = pd.read_parquet(pc_path)
+        mine = pc[(pc["regime"] == "PERCOLATION") & (pc["condition"] == "none")
+                  & (pc["b"] == 0.0) & (pc["kappa"] == 0.0)]
+        if not mine.empty:
+            stored = mine.loc[mine["method"] == "fss_crossing", "p_c"]
+            if len(stored) != 1:
+                raise ValueError(f"{pc_path} holds a partial Experiment 0 key; resolve by hand")
+            _assert_i1(float(stored.iloc[0]))
+            print(f"Experiment 0 already recorded in {pc_path}: "
+                  f"fss_crossing p_c = {float(stored.iloc[0]):.4f}")
+            return df
+
+    rows = pc_rows(df, "none", "PERCOLATION")
+    crossing = next(r for r in rows if r["method"] == "fss_crossing")
+    _assert_i1(crossing["p_c"])
+    write_pc_estimates(rows, pc_path)
+
+    peak = next(r for r in rows if r["method"] == "var_peak" and r["L"] == max(EXP0_L))
+    print(f"Experiment 0: fss_crossing p_c = {crossing['p_c']:.4f} ± {crossing['p_c_stderr']:.4f} "
+          f"(literature {P_C_LITERATURE}); L={peak['L']} var_peak = {peak['p_c']:.4f} "
+          "(cross-check, not asserted)")
+    return df
 
 
 def run_exp1():

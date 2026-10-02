@@ -806,3 +806,29 @@ Acceptance criteria, row identity (DEC-004) and the I1 binding (DEC-014) are unc
 **Context impact.** none. No §4 signature or §5 column changes. This completes the follow-up in DEC-032.
 
 **Commit.** pending
+
+### DEC-034 — SPEC-07: choices the spec left open
+- **Date:** 2026-10-02
+- **Raised by:** Aaron (on SPEC-07)
+- **Spec:** SPEC-07
+- **Type:** deviation
+- **Status:** resolved — no contract touched; reviewer to confirm
+
+**Situation.** SPEC-07 is silent on how the Experiment 0 runs are seeded, how a staged run (L=128 and 256 first, per its Notes) is run, where the I1 assertion sits relative to the append to `pc_estimates.parquet`, and how the `code_version` rule applies to results produced before the code is committed.
+
+**Decision.**
+
+- *Seeds.* The spec does not say how runs are seeded. `seed = (i_L * 61 + i_p) * 500 + replicate`, where `i_L` and `i_p` index the full grid. Every run gets its own stream, and `run_id` does not depend on which subset of `sizes` or `replicates` was requested, so a staged or pilot run resumes into the full one.
+- *Extra arguments.* `run_exp0` takes optional `sizes`, `out_path`, `pc_path` and `replicates`, all defaulting to the spec grid, so `run.py --exp 0` is unchanged. A subset of `sizes` or fewer `replicates` runs the configs only and records no `p_c`: a threshold from part of the grid must not be written as the Experiment 0 estimate. This is what the spec's "run L=128 and 256 first" note needs.
+- *I1 before write.* I1 is asserted before anything is appended to `pc_estimates.parquet`, so a failing baseline leaves no estimate in an append-only file. If the key is already present, a rerun appends nothing and re-checks the stored crossing against I1.
+- *`run.py`.* Already routed `--exp 0` to `run_exp0`; not touched.
+- *Grid tests.* Row count, regime settings and nullness are enforced at run time by `_check_exp0_frame` and `Config.__post_init__`. No separate unit tests were added, because `tests/test_experiments.py` is not on the spec's may-touch list.
+- *`code_version`.* The results carry `f25c4a6`, the SPEC-06 head, a real SHA. They were produced from a working tree with uncommitted SPEC-07 changes (the grid builder), so the SHA names the parent of the code that made them. The model, step function and estimator are identical at that SHA. For an exact match, commit the code and rerun after deleting `results/exp0.parquet` and `results/pc_estimates.parquet` (about 20 minutes).
+
+**Measured.** 91,500 rows, none truncated, longest run 1692 steps against a limit of 8L at L=512. Mean `wall_ms` is 25 / 100 / 883 ms at L = 128 / 256 / 512, so the full grid is 8.5 core-hours of summed in-worker run time (about 32 minutes of wall time on 16 threads), not the 75 core-hours the spec estimated from §6.3. `fss_crossing` p_c = 0.4064 ± 0.0005 against 0.407; `var_peak` is 0.4105 / 0.4088 / 0.4075 at L = 128 / 256 / 512, converging on the crossing from above as finite-size theory predicts.
+
+**Rationale.** Each item is a choice inside the spec's silence; none changes a contract, the grid, or the I1 binding.
+
+**Context impact.** none
+
+**Commit.** pending
