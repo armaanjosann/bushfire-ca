@@ -31,7 +31,7 @@ decisions: [DEC-001, DEC-004, DEC-014]
 
 - The Experiment 0 config grid: `PERCOLATION`, `p ∈ [0.30, 0.60]` step 0.005 (61 values), `L ∈ {128, 256, 512}`, R=500, `edge` ignition, no settlement.
 - Running it through SPEC-05's harness to `results/exp0.parquet`.
-- Feeding the frame to SPEC-06's `estimate_pc` and appending the rows to `results/pc_estimates.parquet`.
+- Feeding the frame to SPEC-06's `pc_rows` and appending the rows it returns to `results/pc_estimates.parquet` through `write_pc_estimates` (DEC-032).
 - The I1 assertion.
 - Wiring `run.py --exp 0`.
 
@@ -57,7 +57,7 @@ decisions: [DEC-001, DEC-004, DEC-014]
 
 ## Interface contract
 
-No new interface. Uses `run_configs` (SPEC-05) and `estimate_pc` / `write_pc_estimates` (SPEC-06) as they stand.
+No new interface. Uses `run_configs` (SPEC-05) and `pc_rows` / `write_pc_estimates` (SPEC-06) as they stand. `pc_rows(df, condition, regime)` returns the three per-`L` `var_peak` rows and the one `fss_crossing` row (DEC-004, DEC-032); its crossing row equals `estimate_pc`'s return.
 
 ## Behaviour
 

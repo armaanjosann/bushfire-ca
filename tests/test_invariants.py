@@ -268,9 +268,45 @@ def test_i9():
     raise NotImplementedError
 
 
-@pytest.mark.xfail(reason="I10 no truncation lands in SPEC-06", strict=False)
 def test_i10():
-    raise NotImplementedError
+    """`truncated` is False across every reported frame, and the assertion lives
+    in analysis.py (project-context.md §7 I10, §3.7). SPEC-06.
+
+    Frames are built from real runs: one that finishes, one cut off by
+    max_steps. The analysis layer must pass the first and refuse the second
+    rather than drop the offending row.
+    """
+    import pandas as pd
+
+    from src.analysis import assert_not_truncated, estimate_pc
+
+    def frame(**overrides):
+        rows = []
+        for seed in range(4):
+            cfg = Config(L=64, p=0.9, seed=seed, **overrides)
+            r = run_fire(cfg)
+            rows.append({"regime": cfg.regime, "condition": cfg.condition, "L": cfg.L,
+                         "p": cfg.p, "b": cfg.b, "kappa": cfg.kappa,
+                         "burned_fraction": r.burned_fraction,
+                         "spanned": None, "reached_edge": r.reached_edge,
+                         "truncated": r.truncated})
+        return pd.DataFrame(rows)
+
+    finished = frame()
+    assert not finished["truncated"].any()
+    assert_not_truncated(finished)
+
+    cut_off = frame(max_steps=2)
+    assert cut_off["truncated"].all()
+    with pytest.raises(AssertionError):
+        assert_not_truncated(cut_off)
+    with pytest.raises(AssertionError):
+        estimate_pc(cut_off, "none", "STUDY")           # refused before any estimating
+
+    # one truncated row among clean ones is still fatal; it is not filtered out
+    mixed = pd.concat([finished, cut_off.iloc[:1]], ignore_index=True)
+    with pytest.raises(AssertionError):
+        assert_not_truncated(mixed)
 
 
 @pytest.mark.xfail(reason="I11 lattice frame invariance lands in SPEC-16", strict=False)

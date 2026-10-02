@@ -33,7 +33,7 @@ Per-condition `STUDY` thresholds are measured with finite-size scaling and appen
 - Applying the §6.2 selection rule, fixed in advance (DEC-012), to Experiment 1. That picks the best `patches` level and the best `strips_perp` level.
 - **Declaring the fine `p` sweep range and step explicitly** — see Behaviour.
 - The grid: `STUDY`, `kappa = 0`, `phi = -π/2`, at `b = 0.15` over three treated conditions: `random`, the selected `patches(k*)` and the selected `strips_perp(w*)`. `L ∈ {128, 256, 512}`, R = 500, **`edge` ignition**, no settlement.
-- Running it to `results/exp2.parquet` and appending per-condition rows to `pc_estimates.parquet`.
+- Running it to `results/exp2.parquet` and appending per-condition rows to `pc_estimates.parquet`: for each condition, `pc_rows(df, condition, "STUDY")` passed to `write_pc_estimates` (DEC-032).
 - **No `none` arm.** The untreated reference is Experiment 0b's `kappa = 0` threshold (SPEC-19), measured with identical settings.
 
 **Out of scope**
@@ -56,7 +56,7 @@ Per-condition `STUDY` thresholds are measured with finite-size scaling and appen
 
 ## Interface contract
 
-No new interface. Uses `run_configs` (SPEC-05), `estimate_pc` and `write_pc_estimates` (SPEC-06).
+No new interface. Uses `run_configs` (SPEC-05), `pc_rows` and `write_pc_estimates` (SPEC-06). `pc_rows(df, condition, regime)` returns the three per-`L` `var_peak` rows and the one `fss_crossing` row for one measured key (DEC-004, DEC-032); the frame passed must hold one `b`, `kappa` and geometry, so filter to one condition level at a time.
 
 ## Behaviour
 

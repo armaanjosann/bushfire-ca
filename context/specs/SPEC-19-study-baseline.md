@@ -23,7 +23,7 @@ decisions: [DEC-011]
 
 - `workflow-rules.md`
 - `project-context.md` §6.1 (governing threshold, **edge-ignition wind convention**), §6.2 Exp 0b and the note on edge ignition, §6.3 (cost), §3.4 (wind kernel), §3.5 (edge ignition), §4.6, §2 O4
-- SPEC-06 — `estimate_pc`, `write_pc_estimates`, `resolve_p` and the row identity (DEC-004)
+- SPEC-06 — `estimate_pc`, `pc_rows`, `write_pc_estimates`, `resolve_p` and the row identity (DEC-004, DEC-032)
 
 ## Scope
 
@@ -31,7 +31,7 @@ decisions: [DEC-011]
 
 - **Pre-pass:** `STUDY`, `condition="none"`, `b=0`, `phi=-π/2`, edge ignition, `L=128`, R=100, `p ∈ [0.30, 0.90]` step 0.01, at each `kappa`, written to `results/exp0b_prepass.parquet`. From it, each `kappa`'s sweep centre is the smallest `p` at which `P(span) ≥ 0.5`, rounded to the nearest 0.005. The builder derives the centre deterministically from that file.
 - **Main sweep:** the same settings at each `kappa ∈ {0, 1, 2, 4}`. 21 points, centre ± 0.05 at step 0.005; `L ∈ {128, 256, 512}`; R=500. Written to `results/exp0b.parquet`.
-- Feeding each `kappa`'s frame to `estimate_pc` and appending rows to `pc_estimates.parquet` with `regime="STUDY"`, `condition="none"`, `b=0`, that `kappa`.
+- Feeding each `kappa`'s frame to `pc_rows` and appending the rows it returns to `pc_estimates.parquet` through `write_pc_estimates`, with `regime="STUDY"`, `condition="none"`, `b=0`, that `kappa` (DEC-032).
 - Wiring `run.py --exp 0b`. Add a `run_exp0b` entry point and insert `"0b"` into `EXPERIMENTS` directly after `"0"`, so `--exp all` runs it before Experiment 1.
 
 **Out of scope**
@@ -57,7 +57,7 @@ decisions: [DEC-011]
 
 ## Interface contract
 
-No new public interface. Uses `run_configs` (SPEC-05) and `estimate_pc` / `write_pc_estimates` (SPEC-06) as they stand.
+No new public interface. Uses `run_configs` (SPEC-05) and `pc_rows` / `write_pc_estimates` (SPEC-06) as they stand. `pc_rows(df, condition, regime)` returns the three per-`L` `var_peak` rows and the one `fss_crossing` row (DEC-004, DEC-032); filter the frame to one `kappa` before calling it.
 
 ## Behaviour
 
