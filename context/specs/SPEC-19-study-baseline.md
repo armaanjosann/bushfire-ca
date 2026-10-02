@@ -1,7 +1,7 @@
 ---
 id: SPEC-19
 title: Experiment 0b — untreated STUDY baseline thresholds
-status: not started
+status: in review
 owner: Aaron
 reviewer: Armaan
 phase: P2 — Harness and validation (Sprint 1 → 2)
@@ -10,7 +10,7 @@ implements: [§6.1, §6.2 Exp 0b]
 issue:
 branch: spec/SPEC-19-study-baseline
 pr:
-decisions: [DEC-011]
+decisions: [DEC-011, DEC-035]
 ---
 
 # SPEC-19 — Experiment 0b: untreated `STUDY` baseline thresholds
