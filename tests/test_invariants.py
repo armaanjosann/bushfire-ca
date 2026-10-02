@@ -13,9 +13,33 @@ import pytest
 from src.model import BURNING, BURNT, Config, run_fire
 
 
-@pytest.mark.xfail(reason="I1 percolation limit lands in SPEC-07", strict=False)
 def test_i1():
-    raise NotImplementedError
+    """The PERCOLATION `fss_crossing` p_c, across L in {128, 256, 512}, is within
+    0.01 of P_C_LITERATURE (project-context.md §7 I1, DEC-014). SPEC-07.
+
+    Reads the committed `results/pc_estimates.parquet`, which Experiment 0
+    wrote. The tolerance is stated here on purpose rather than imported from
+    the code under test. The L=512 var_peak is printed as the cross-check and
+    is not asserted.
+    """
+    import pandas as pd
+
+    from src.model import P_C_LITERATURE
+
+    pc = pd.read_parquet("results/pc_estimates.parquet")
+    mine = pc[(pc["regime"] == "PERCOLATION") & (pc["condition"] == "none")
+              & (pc["b"] == 0.0) & (pc["kappa"] == 0.0)]
+
+    crossing = mine[mine["method"] == "fss_crossing"]
+    assert len(crossing) == 1 and crossing["L"].isna().all()
+    p_c = float(crossing["p_c"].iloc[0])
+    assert abs(p_c - P_C_LITERATURE) <= 0.01, (
+        f"PERCOLATION fss_crossing p_c = {p_c:.4f}, literature {P_C_LITERATURE}"
+    )
+
+    peaks = mine[mine["method"] == "var_peak"].set_index("L")["p_c"]
+    assert sorted(peaks.index) == [128, 256, 512]
+    print(f"I1: fss_crossing {p_c:.4f}; L=512 var_peak {peaks[512]:.4f} (cross-check)")
 
 
 def test_i2_determinism():
