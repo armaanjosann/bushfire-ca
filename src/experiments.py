@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.analysis import PC_PATH, pc_rows, write_pc_estimates
+from src.analysis import PC_PATH, assert_not_truncated, pc_rows, write_pc_estimates
 from src.model import P_C_LITERATURE, Config, RunResult, run_fire
 
 # Run-time tuning. Constants, read at call time and never mutated by this
@@ -435,6 +435,209 @@ def run_exp0(sizes: Sequence[int] = EXP0_L, out_path: str = EXP0_PATH,
     print(f"Experiment 0: fss_crossing p_c = {crossing['p_c']:.4f} ± {crossing['p_c_stderr']:.4f} "
           f"(literature {P_C_LITERATURE}); L={peak['L']} var_peak = {peak['p_c']:.4f} "
           "(cross-check, not asserted)")
+    return df
+
+
+# --- Experiment 0b: untreated STUDY baseline thresholds (SPEC-19) -------------
+
+EXP0B_PREPASS_PATH = "results/exp0b_prepass.parquet"
+EXP0B_PATH = "results/exp0b.parquet"
+EXP0B_KAPPAS = (0.0, 1.0, 2.0, 4.0)
+EXP0B_PHI = -math.pi / 2  # §6.1 edge-ignition wind convention: wind blows row 0 -> row L-1
+EXP0B_L = (128, 256, 512)
+EXP0B_R = 500
+EXP0B_HALF_WIDTH = 0.05
+EXP0B_P_STEP = 0.005
+EXP0B_N_P = 21  # centre +/- 0.05 at step 0.005
+EXP0B_PREPASS_L = 128
+EXP0B_PREPASS_R = 100
+EXP0B_PREPASS_P = tuple(round(0.30 + 0.01 * i, 2) for i in range(61))  # 0.30 .. 0.90
+EXP0B_SEED_BASE = 1_000_000  # keeps the sweep's streams clear of the pre-pass's
+
+
+def _exp0b_config(L: int, p: float, kappa: float, seed: int) -> Config:
+    """One untreated STUDY edge-ignition config. `beta`, `f_treat`, `tau` and
+    `diagonal_factor` are passed explicitly so a change to a STUDY default
+    cannot silently change what this experiment measures."""
+    return Config(
+        L=L, regime="STUDY", p=p, f_treat=0.2,
+        beta=0.8, kappa=kappa, phi=EXP0B_PHI, tau=1, diagonal_factor=True,
+        condition="none", b=0.0, ignition="edge", settlement=False, seed=seed,
+    )
+
+
+def exp0b_prepass_grid(replicates: int = EXP0B_PREPASS_R) -> list[Config]:
+    """The pre-pass: L=128, p in [0.30, 0.90] step 0.01, every kappa.
+
+    Seed is the run's position in the full pre-pass (kappa, then `p`, then
+    replicate).
+    """
+    if not 1 <= replicates <= EXP0B_PREPASS_R:
+        raise ValueError(f"replicates must be in 1..{EXP0B_PREPASS_R}, got {replicates}")
+    n_p = len(EXP0B_PREPASS_P)
+    return [
+        _exp0b_config(EXP0B_PREPASS_L, p, kappa, (i_k * n_p + i_p) * EXP0B_PREPASS_R + r)
+        for i_k, kappa in enumerate(EXP0B_KAPPAS)
+        for i_p, p in enumerate(EXP0B_PREPASS_P)
+        for r in range(replicates)
+    ]
+
+
+def exp0b_centres(prepass: pd.DataFrame) -> dict[float, float]:
+    """Each kappa's sweep centre from the pre-pass frame (SPEC-19 scope).
+
+    The centre is the smallest pre-pass `p` at which P(span) >= 0.5, rounded
+    to the nearest 0.005. Deterministic in `prepass`. Raises if a kappa never
+    reaches 0.5, or already has by the first `p`: the transition is then not
+    bracketed by the pre-pass and a sweep centred on it would be a guess.
+    """
+    assert_not_truncated(prepass)
+    centres = {}
+    for kappa in EXP0B_KAPPAS:
+        sub = prepass[(prepass["kappa"] == kappa) & (prepass["regime"] == "STUDY")
+                      & (prepass["condition"] == "none") & (prepass["L"] == EXP0B_PREPASS_L)]
+        if sub.empty:
+            raise ValueError(f"pre-pass frame has no rows for kappa={kappa}")
+        if sub["spanned"].isna().any():
+            raise ValueError(f"pre-pass kappa={kappa} has null `spanned`")
+        frac = sub.assign(hit=sub["spanned"].astype(bool)).groupby(
+            sub["p"].round(6))["hit"].mean().sort_index()
+        above = frac[frac >= 0.5]
+        if above.empty:
+            raise ValueError(
+                f"kappa={kappa}: no pre-pass p has P(span) >= 0.5 (max {frac.max():.3f} at "
+                f"p={frac.idxmax():.2f}). Stop and raise a DEC; do not widen past p=1 (SPEC-19)."
+            )
+        first = float(above.index[0])
+        if first <= float(frac.index[0]) + 1e-9:
+            raise ValueError(
+                f"kappa={kappa}: P(span) >= 0.5 already at the lowest pre-pass p={first:.2f}; "
+                "the transition is not bracketed. Stop and raise a DEC (SPEC-19)."
+            )
+        centres[kappa] = round(round(first / EXP0B_P_STEP) * EXP0B_P_STEP, 3)
+    return centres
+
+
+def exp0b_p_values(centre: float) -> tuple[float, ...]:
+    """The 21 sweep points: centre +/- 0.05 at step 0.005."""
+    return tuple(round(centre + EXP0B_P_STEP * (i - EXP0B_N_P // 2), 3) for i in range(EXP0B_N_P))
+
+
+def exp0b_grid(centres: dict[float, float], sizes: Sequence[int] = EXP0B_L,
+               replicates: int = EXP0B_R) -> list[Config]:
+    """The §6.2 Experiment 0b main sweep, one 21-point arm per kappa.
+
+    As in `exp0_grid`, a run's seed is its position in the *full* grid (kappa,
+    `p`, lattice size, replicate), so a staged run (L=128, 256 first) resumes
+    into the full one with the same `run_id`s.
+    """
+    if not 1 <= replicates <= EXP0B_R:
+        raise ValueError(f"replicates must be in 1..{EXP0B_R}, got {replicates}")
+    unknown = [L for L in sizes if L not in EXP0B_L]
+    if unknown:
+        raise ValueError(f"sizes {unknown} are not in the Experiment 0b grid {EXP0B_L}")
+    missing = [k for k in EXP0B_KAPPAS if k not in centres]
+    if missing:
+        raise ValueError(f"no sweep centre for kappa {missing}")
+    cfgs = []
+    for i_k, kappa in enumerate(EXP0B_KAPPAS):
+        for i_p, p in enumerate(exp0b_p_values(centres[kappa])):
+            for L in sorted(sizes):
+                i_L = EXP0B_L.index(L)
+                base = EXP0B_SEED_BASE + (((i_k * EXP0B_N_P + i_p) * len(EXP0B_L)) + i_L) * EXP0B_R
+                cfgs.extend(_exp0b_config(L, p, kappa, base + r) for r in range(replicates))
+    return cfgs
+
+
+def _check_exp0b_frame(df: pd.DataFrame, n_expected: int, what: str) -> None:
+    """The Experiment 0b acceptance checks that hold row by row (pre-pass and sweep)."""
+    problems = []
+    if len(df) != n_expected:
+        problems.append(f"{len(df)} rows, expected {n_expected}")
+    if df["truncated"].any():
+        problems.append("truncated rows present (raise max_steps, do not filter, §3.7)")
+    if not df["run_id"].is_unique:
+        problems.append("run_id is not unique")
+    fixed = {"regime": "STUDY", "condition": "none", "b": 0.0, "beta": 0.8, "f_treat": 0.2,
+             "tau": 1.0, "diagonal_factor": True, "ignition": "edge", "settlement": False,
+             "phi": EXP0B_PHI}
+    for col, want in fixed.items():
+        if not (df[col] == want).all():
+            problems.append(f"{col} is not {want!r} on every row")
+    if df["reached_edge"].notna().any():
+        problems.append("reached_edge is non-null (must be null under edge ignition, §3.5)")
+    if df["spanned"].isna().any():
+        problems.append("spanned is null on some rows")
+    if problems:
+        raise AssertionError(f"Experiment 0b {what} frame failed: " + "; ".join(problems))
+
+
+def run_exp0b(sizes: Sequence[int] = EXP0B_L, prepass_path: str = EXP0B_PREPASS_PATH,
+              out_path: str = EXP0B_PATH, pc_path: str = PC_PATH,
+              replicates: int = EXP0B_R, centres: dict[float, float] | None = None
+              ) -> pd.DataFrame:
+    """Experiment 0b: pre-pass, sweep, and the untreated STUDY thresholds.
+
+    Writes `prepass_path`, derives each kappa's sweep centre from it
+    (`exp0b_centres`), runs the sweep into `out_path`, then appends four
+    `pc_estimates` rows per kappa (three per-`L` `var_peak`, one `fss_crossing`)
+    through `pc_rows` / `write_pc_estimates` (DEC-004, DEC-032).
+
+    A subset of `sizes` or fewer `replicates` is a staged run: it only runs the
+    configs and records no threshold, because a threshold from part of the grid
+    must not be recorded as the Experiment 0b estimate (as `run_exp0`).
+    `centres` replaces the pre-pass-derived centres, for re-centring an arm
+    whose crossing fell outside its range (SPEC-19 Behaviour).
+
+    Every crossing is checked to lie strictly inside its kappa's declared
+    range, and all four are checked before any is written, so a failing arm
+    leaves no estimate in the append-only file. If the keys are already
+    recorded, nothing is appended.
+    """
+    prepass = run_configs(exp0b_prepass_grid(), prepass_path)
+    _check_exp0b_frame(prepass, len(EXP0B_KAPPAS) * len(EXP0B_PREPASS_P) * EXP0B_PREPASS_R,
+                       "pre-pass")
+    centres = exp0b_centres(prepass) if centres is None else dict(centres)
+    print("Experiment 0b sweep centres: "
+          + ", ".join(f"kappa={k:g}: {centres[k]:.3f}" for k in EXP0B_KAPPAS))
+
+    cfgs = exp0b_grid(centres, sizes, replicates)
+    df = run_configs(cfgs, out_path)
+    _check_exp0b_frame(df, len(cfgs), "sweep")
+
+    if tuple(sorted(sizes)) != EXP0B_L or replicates != EXP0B_R:
+        print(f"Experiment 0b staged run: {len(df)} rows in {out_path}; "
+              "no p_c recorded (not the full grid).")
+        return df
+
+    if Path(pc_path).exists():
+        pc = pd.read_parquet(pc_path)
+        mine = pc[(pc["regime"] == "STUDY") & (pc["condition"] == "none")
+                  & (pc["b"] == 0.0) & pc["kappa"].isin(EXP0B_KAPPAS)]
+        if not mine.empty:
+            have = set(mine.loc[mine["method"] == "fss_crossing", "kappa"])
+            if have != set(EXP0B_KAPPAS) or len(mine) != 4 * len(EXP0B_KAPPAS):
+                raise ValueError(f"{pc_path} holds a partial Experiment 0b record; resolve by hand")
+            print(f"Experiment 0b already recorded in {pc_path}; nothing appended.")
+            return df
+
+    rows, report = [], []
+    for kappa in EXP0B_KAPPAS:
+        arm_rows = pc_rows(df[df["kappa"] == kappa], "none", "STUDY")
+        crossing = next(r for r in arm_rows if r["method"] == "fss_crossing")
+        lo = round(centres[kappa] - EXP0B_HALF_WIDTH, 3)
+        hi = round(centres[kappa] + EXP0B_HALF_WIDTH, 3)
+        if not lo < crossing["p_c"] < hi:
+            raise AssertionError(
+                f"kappa={kappa:g}: crossing p_c = {crossing['p_c']:.4f} is not strictly inside "
+                f"its sweep range ({lo}, {hi}). Re-centre on it with `centres=` and rerun that "
+                "arm; do not extrapolate (SPEC-19)."
+            )
+        rows.extend(arm_rows)
+        report.append(f"kappa={kappa:g}: centre {centres[kappa]:.3f}, "
+                      f"p_c = {crossing['p_c']:.4f} ± {crossing['p_c_stderr']:.4f}")
+    write_pc_estimates(rows, pc_path)
+    print("Experiment 0b: " + "; ".join(report))
     return df
 
 

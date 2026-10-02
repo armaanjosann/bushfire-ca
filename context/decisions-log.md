@@ -832,3 +832,29 @@ Acceptance criteria, row identity (DEC-004) and the I1 binding (DEC-014) are unc
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-035 — SPEC-19: choices the spec left open
+- **Date:** 2026-10-02
+- **Raised by:** agent on SPEC-19
+- **Spec:** SPEC-19
+- **Type:** deviation
+- **Status:** resolved — no contract touched; reviewer to confirm
+
+**Situation.** SPEC-19 is silent on how the Experiment 0b runs are seeded, what the pre-pass does when the transition is not bracketed, what happens when a crossing leaves its range, how a staged run (L=128, 256 first, per its Notes) is run, and how the `code_version` rule applies to results produced before the code is committed.
+
+**Decision.**
+
+- *Seeds.* Pre-pass: `(i_kappa * 61 + i_p) * 100 + replicate`. Sweep: `1_000_000 + (((i_kappa * 21 + i_p) * 3 + i_L) * 500 + replicate`. Indices are positions in the full grid, so a staged or reduced run resumes into the full one with the same `run_id`s (as DEC-034 for Experiment 0). The offset keeps the sweep's random streams distinct from the pre-pass's.
+- *Centre rule.* "Smallest `p` with `P(span) >= 0.5`" is read as `>=`, so exactly 0.5 counts. `exp0b_centres` raises, pointing at a DEC, if a kappa never reaches 0.5 (the spec's own rule for `kappa=4`), and also if it has already reached 0.5 at the lowest pre-pass `p=0.30`, because the transition is then not bracketed and a sweep centred on it would be a guess. Neither fired.
+- *Range check.* In `run_exp0b`, every kappa's crossing is checked to lie strictly inside its declared range (centre ± 0.05) before anything is appended to `pc_estimates.parquet`. All four arms are checked first and written in one `write_pc_estimates` call, so a failing arm leaves no partial record in the append-only file. Re-centring uses an optional `centres=` argument. If the keys are already recorded, nothing is appended (as `run_exp0`).
+- *Extra arguments.* `run_exp0b` takes optional `sizes`, `prepass_path`, `out_path`, `pc_path`, `replicates` and `centres`, all defaulting to the spec grid, so `run.py --exp 0b` is unchanged. A subset of `sizes` or fewer `replicates` runs the configs only and records no threshold. The pre-pass is always the full R=100.
+- *Tests.* Beyond the required rotation-symmetry test, `tests/test_exp0b.py` covers the grids, seeds, centre derivation and the staged-run path, using synthetic frames, so it runs in seconds.
+- *`code_version`.* The results carry `5398134`, the SPEC-07 head, a real SHA. They were produced from a working tree with uncommitted SPEC-19 changes, so the SHA names the parent of the code that made them (same situation as DEC-034). The model, step function and estimator are identical at that SHA. For an exact match, commit the code and rerun after deleting `results/exp0b_prepass.parquet`, `results/exp0b.parquet` and the 16 `STUDY` rows of `results/pc_estimates.parquet`.
+
+**Measured.** Pre-pass sweep centres: kappa 0 / 1 / 2 / 4 = 0.480 / 0.450 / 0.480 / 0.500. `fss_crossing` p_c ± stderr: 0.4769 ± 0.0004 / 0.4641 ± 0.0006 / 0.5004 ± 0.0009 / 0.5410 ± 0.0010; all strictly inside range. `var_peak` at L=512: 0.4785 / 0.4663 / 0.5010 / 0.5424. 126,000 sweep rows and 24,400 pre-pass rows, none truncated. Mean `wall_ms` is 22 / 79 / 710 at L = 128 / 256 / 512, about 15 core-hours of in-worker run time in all, not the ~103 core-hours §6.3 estimates.
+
+**Rationale.** Each item is a choice inside the spec's silence; none changes a contract, the grid, or the sweep definition.
+
+**Context impact.** none
+
+**Commit.** pending

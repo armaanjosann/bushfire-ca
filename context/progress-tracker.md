@@ -42,7 +42,7 @@ Full definitions in `workflow-rules.md` §4.
 | SPEC-16 | Experiments 3 and 4, frame invariance | Aaron | P5 — Full experiments | `not started` | SPEC-13 |  | DEC-003, DEC-008, DEC-011, DEC-015 |
 | SPEC-17 | Results figures | Armaan | P6 — Delivery | `not started` | SPEC-13, SPEC-14, SPEC-15, SPEC-16 |  | DEC-009, DEC-010, DEC-013, DEC-016, DEC-017 |
 | SPEC-18 | Reproducibility gate | Aaron | P6 — Delivery | `not started` | SPEC-08, SPEC-17, SPEC-20, SPEC-21 |  | DEC-016, DEC-017 |
-| SPEC-19 | Experiment 0b: untreated STUDY baseline thresholds | Aaron | P2 — Harness & validation | `not started` | SPEC-05, SPEC-06 |  | DEC-011 |
+| SPEC-19 | Experiment 0b: untreated STUDY baseline thresholds | Aaron | P2 — Harness & validation | `in review` | SPEC-05, SPEC-06 |  | DEC-011, DEC-035 |
 | SPEC-20 | Notebook foundation, model-and-validation notebook | Aaron | P2 — Harness & validation | `not started` | SPEC-08 |  | DEC-016, DEC-017, DEC-018 |
 | SPEC-21 | Results notebooks: geometries, thresholds, tails | Armaan | P6 — Delivery | `not started` | SPEC-17, SPEC-20 |  | DEC-016, DEC-017 |
 
