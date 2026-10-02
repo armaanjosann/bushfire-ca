@@ -1,7 +1,7 @@
 ---
 id: SPEC-06
 title: p_c estimation, finite-size scaling, and the p_rel resolver
-status: not started
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P2 — Harness and validation (Sprint 1)
@@ -10,7 +10,7 @@ implements: [§4.6, §6.1]
 issue:
 branch: spec/SPEC-06-pc-estimation
 pr:
-decisions: [DEC-004]
+decisions: [DEC-004, DEC-032]
 ---
 
 # SPEC-06 — `p_c` estimation, FSS, and the `p_rel` resolver
