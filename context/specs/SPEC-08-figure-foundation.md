@@ -1,7 +1,7 @@
 ---
 id: SPEC-08
 title: Figure foundation and the validation figure
-status: not started
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P2 — Harness and validation (Sprint 1)
@@ -10,7 +10,7 @@ implements: [§9, §10.1 D5]
 issue:
 branch: spec/SPEC-08-figure-foundation
 pr:
-decisions: [DEC-001, DEC-016, DEC-017]
+decisions: [DEC-001, DEC-016, DEC-017, DEC-036]
 ---
 
 # SPEC-08 — Figure foundation and the validation figure
@@ -73,12 +73,12 @@ def build_all(outdir: str = "figures/out") -> list[str]: ...
 
 ## Acceptance criteria
 
-- [ ] `python figures/make_figures.py --figure validation` writes a file and exits 0.
-- [ ] `grep -n "run_fire" figures/make_figures.py` returns nothing.
-- [ ] The figure shows three `L` curves, the crossing, and the literature marker, each labelled.
-- [ ] The builder raises a clear error if `results/exp0.parquet` or `results/pc_estimates.parquet` is missing, rather than producing an empty plot.
-- [ ] Re-running the builder twice produces byte-identical **figure files**. (Notebook files are excluded — their metadata is never byte-stable, DEC-017.)
-- [ ] A test asserts the registry is non-empty, every registered builder is callable, and every builder returns a `Figure`.
+- [x] `python figures/make_figures.py --figure validation` writes a file and exits 0.
+- [x] `grep -n "run_fire" figures/make_figures.py` returns nothing.
+- [x] The figure shows three `L` curves, the crossing, and the literature marker, each labelled.
+- [x] The builder raises a clear error if `results/exp0.parquet` or `results/pc_estimates.parquet` is missing, rather than producing an empty plot.
+- [x] Re-running the builder twice produces byte-identical **figure files**. (Notebook files are excluded — their metadata is never byte-stable, DEC-017.)
+- [x] A test asserts the registry is non-empty, every registered builder is callable, and every builder returns a `Figure`.
 
 ## Invariants
 
@@ -94,11 +94,11 @@ pytest -q tests/test_figures.py
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR
+- [x] `status` updated in this file and in `progress-tracker.md`
 - [ ] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 
