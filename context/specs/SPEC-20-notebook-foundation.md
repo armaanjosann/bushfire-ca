@@ -1,7 +1,7 @@
 ---
 id: SPEC-20
 title: Notebook foundation and the model-and-validation notebook
-status: not started
+status: in review
 owner: Aaron
 reviewer: Armaan
 phase: P2 — Harness and validation (Sprint 2)
