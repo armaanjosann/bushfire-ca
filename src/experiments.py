@@ -894,8 +894,201 @@ def run_exp1_coarse(out_path: str = EXP1C_PATH, pc_path: str = PC_PATH,
     return df
 
 
-def run_exp1():
-    raise NotImplementedError("Experiment 1 (geometry x budget) lands in SPEC-13")
+# --- Experiment 1: geometry x budget (SPEC-13, §6.2) --------------------------
+
+EXP1_PATH = "results/exp1.parquet"
+EXP1_L = 256
+EXP1_KAPPAS = (0.0, 2.0)
+EXP1_P_REL = (-0.05, 0.0, 0.05)
+EXP1_P_ABS = 0.70
+EXP1_B = (0.05, 0.10, 0.15, 0.20, 0.25, 0.30)  # plus b=0, run as `none` only (§6.2)
+EXP1_R = 200
+EXP1_SEED_BASE = 4_000_000  # clear of 0 (<1M), 0b (1-1.13M), pilot (2M), 1-coarse (3M)
+EXP1_LEVELS = EXP1C_LEVELS  # the 11 treated condition-levels; `none` is the twelfth
+
+
+def exp1_points(pc_path: str = PC_PATH) -> list[tuple[float, float, float | None]]:
+    """The eight (kappa, p, p_rel) operating points, `p` resolved at build time.
+
+    `p_rel` resolves against the untreated STUDY threshold at the *matching*
+    kappa (Experiment 0b, §6.1); `resolve_p` raises if that row is missing and
+    nothing here catches it. The absolute p = 0.70 carries `p_rel = None`.
+    """
+    points = []
+    for kappa in EXP1_KAPPAS:
+        for rel in EXP1_P_REL:
+            points.append((kappa, resolve_p(rel, regime="STUDY", condition="none", b=0.0,
+                                            kappa=kappa, path=pc_path), rel))
+        points.append((kappa, EXP1_P_ABS, None))
+    return points
+
+
+def exp1_grid(pc_path: str = PC_PATH, side: int = SETTLEMENT_SIDE,
+              replicates: int = EXP1_R) -> tuple[list[Config], list[float | None]]:
+    """The §6.2 Experiment 1 grid: `(configs, p_rel)`, parallel, for `run_configs`.
+
+    2 kappa x 4 densities x (`none` at b=0 + 11 treated levels x 6 budgets)
+    = 536 points, x R = 200 = 107,200 runs. `none` exists only at b=0 (§4.4).
+    Every config writes `settlement_side` explicitly (§3.6, DEC-015).
+
+    Seed is the run's position in the full grid (kappa, p, condition-level, b,
+    replicate), so a staged run with fewer replicates resumes into the full one
+    with the same `run_id`s.
+    """
+    if not 1 <= replicates <= EXP1_R:
+        raise ValueError(f"replicates must be in 1..{EXP1_R}, got {replicates}")
+    levels = [("none", {}, 0.0)] + [(c, prm, b) for c, prm in EXP1_LEVELS for b in EXP1_B]
+    cfgs, p_rels = [], []
+    pos = 0
+    for kappa, p, rel in exp1_points(pc_path):
+        for condition, prm, b in levels:
+            for r in range(replicates):
+                cfgs.append(_exp1_config(kappa, p, condition, prm, b, side,
+                                         EXP1_SEED_BASE + pos * EXP1_R + r))
+                p_rels.append(rel)
+            pos += 1
+    return cfgs, p_rels
+
+
+def _exp1_config(kappa, p, condition, prm, b, side, seed) -> Config:
+    """One Experiment 1 config; STUDY constants passed explicitly so a change to a
+    default cannot silently change what this experiment measures."""
+    return Config(
+        L=EXP1_L, regime="STUDY", p=p, f_treat=0.2,
+        beta=0.8, kappa=kappa, phi=0.0, tau=1, diagonal_factor=True,
+        condition=condition, b=b, geometry_params={**prm, "settlement_side": side},
+        ignition="random_cell", settlement=True, seed=seed,
+    )
+
+
+def _check_exp1_frame(df: pd.DataFrame, n_expected: int, pc_path: str = PC_PATH) -> None:
+    """Every SPEC-13 acceptance check that holds row by row."""
+    from src.geometries import budget_tolerance
+
+    problems = []
+    if len(df) != n_expected:
+        problems.append(f"{len(df)} rows, expected {n_expected}")
+    if df["truncated"].any():
+        problems.append("truncated rows present (raise max_steps, do not filter, §3.7, I10)")
+    if not df["run_id"].is_unique:
+        problems.append("run_id is not unique")
+    fixed = {"regime": "STUDY", "L": EXP1_L, "beta": 0.8, "f_treat": 0.2, "tau": 1.0,
+             "phi": 0.0, "diagonal_factor": True, "ignition": "random_cell", "settlement": True}
+    for col, want in fixed.items():
+        if not (df[col] == want).all():
+            problems.append(f"{col} is not {want!r} on every row")
+    if df["spanned"].notna().any():
+        problems.append("spanned is non-null (must be null under random_cell ignition, §3.5)")
+    if df["reached_edge"].isna().any() or df["settlement_reached"].isna().any():
+        problems.append("reached_edge or settlement_reached is null on some rows")
+    if not ((df["condition"] == "none") == (df["b"] == 0.0)).all():
+        problems.append("`none` must appear at b=0 and only there (§6.2)")
+    treated = df[df["condition"] != "none"]
+    per_level = treated.groupby(["condition", "geometry_params"])["b"].apply(lambda s: set(s.round(6)))
+    if not all(bs == set(EXP1_B) for bs in per_level):
+        problems.append("some condition-level is missing a budget")
+
+    # p matches the resolved threshold + offset, at the matching kappa (§6.1, §2 O4)
+    rel = df["p_rel"]
+    if not df.loc[rel.isna(), "p"].eq(EXP1_P_ABS).all():
+        problems.append("rows with null p_rel must have p = 0.70")
+    for (kappa, off), sub in df[rel.notna()].groupby(["kappa", "p_rel"]):
+        want = resolve_p(float(off), regime="STUDY", condition="none", b=0.0,
+                         kappa=float(kappa), path=pc_path)
+        if not np.allclose(sub["p"], want, rtol=0, atol=1e-12):
+            problems.append(f"p != resolved threshold + offset at kappa={kappa}, p_rel={off}")
+
+    # I7 over the frame: realised n_treated within the shared tolerance of round(b * n_occupied)
+    nominal = (treated["b"] * treated["n_occupied"]).round().astype(int)
+    slack = nominal.map(budget_tolerance)
+    if ((treated["n_treated"] - nominal).abs() > slack).any():
+        problems.append("n_treated outside the budget tolerance on some rows (I7)")
+    if (df.loc[df["condition"] == "none", "n_treated"] != 0).any():
+        problems.append("`none` rows with n_treated != 0")
+
+    if problems:
+        raise AssertionError("Experiment 1 frame failed: " + "; ".join(problems))
+
+
+def run_exp1(out_path: str = EXP1_PATH, pc_path: str = PC_PATH, side: int = SETTLEMENT_SIDE,
+             replicates: int = EXP1_R) -> pd.DataFrame:
+    """Experiment 1: the full geometry x budget grid (SPEC-13).
+
+    Resumable: rerunning skips every `run_id` already in `out_path`. Only the
+    rows this call asked for are checked, so a staged run (fewer replicates)
+    passes against its own size.
+    """
+    cfgs, p_rels = exp1_grid(pc_path, side, replicates)
+    t0 = time.time()
+    df = run_configs(cfgs, out_path, p_rel=p_rels)
+    df = df[df["run_id"].isin({config_run_id(c) for c in cfgs})]
+    _check_exp1_frame(df, len(cfgs), pc_path)
+    print(f"Experiment 1: {len(df)} rows in {out_path} (R={replicates}, settlement_side={side}); "
+          f"{df['wall_ms'].sum() / 3.6e6:.2f} core-hours, {time.time() - t0:.0f} s wall.")
+    return df
+
+
+# --- Illustrative scars (SPEC-13, DEC-009, DEC-013) ---------------------------
+
+SCARS_PATH = "results/scars_illustrative.npz"
+SCARS_P_REL = 0.05
+SCAR_LEVELS = (  # (kappa, condition, params, b): replicate 0 of each Experiment 1 point
+    (0.0, "none", {}, 0.0),
+    (0.0, "strips_perp", {"w": 8}, 0.15),
+    (2.0, "none", {}, 0.0),
+    (2.0, "random", {}, 0.15),
+    (2.0, "patches", {"k": 8}, 0.15),
+    (2.0, "strips_perp", {"w": 8}, 0.15),
+    (2.0, "strips_para", {"w": 8}, 0.15),
+    (2.0, "buffer", {}, 0.15),
+)
+
+
+def scar_configs(pc_path: str = PC_PATH, side: int = SETTLEMENT_SIDE) -> list[Config]:
+    """The named illustrative configs: replicate 0 of eight Experiment 1 points at
+    p_c + 0.05 (DEC-039). Picked out of `exp1_grid`, so each scar is the scar of
+    a row that exists in exp1.parquet, with the same `run_id`."""
+    cfgs, p_rels = exp1_grid(pc_path, side, 1)
+    by_key = {}
+    for cfg, rel in zip(cfgs, p_rels):
+        key = (cfg.kappa, rel, cfg.condition, _dumps({k: v for k, v in cfg.geometry_params.items()
+                                                      if k != "settlement_side"}), cfg.b)
+        by_key[key] = cfg
+    out = []
+    for kappa, condition, prm, b in SCAR_LEVELS:
+        key = (kappa, SCARS_P_REL, condition, _dumps(prm), b)
+        if key not in by_key:
+            raise LookupError(f"illustrative scar {key} is not a point of the Experiment 1 grid")
+        out.append(by_key[key])
+    return out
+
+
+def run_scars(out_path: str = SCARS_PATH, pc_path: str = PC_PATH,
+              side: int = SETTLEMENT_SIDE) -> list[str]:
+    """Capture the illustrative scars to one npz (the only scar file, workflow-rules §9).
+
+    For each named config: `<run_id>__scar` (int8 final state), `<run_id>__ignition_step`
+    (int32, step each cell first burned, -1 if never) and `<run_id>__config` (canonical
+    JSON). `run_ids` lists them in order. `run_configs` has no scar option; this is the
+    only path that stores grids (§4.1).
+    """
+    arrays = {}
+    run_ids = []
+    for cfg in scar_configs(pc_path, side):
+        rid = config_run_id(cfg)
+        res = run_fire(cfg, capture_scar=True)
+        arrays[f"{rid}__scar"] = res.scar.astype(np.int8)
+        arrays[f"{rid}__ignition_step"] = res.ignition_step.astype(np.int32)
+        arrays[f"{rid}__config"] = np.array(_dumps(_canonical_config(cfg)))
+        run_ids.append(rid)
+    arrays["run_ids"] = np.array(run_ids)
+    path = Path(out_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.stem + ".tmp.npz")
+    np.savez_compressed(tmp, **arrays)
+    os.replace(tmp, path)
+    print(f"Illustrative scars: {len(run_ids)} configs -> {path} ({path.stat().st_size / 1e6:.2f} MB)")
+    return run_ids
 
 
 def run_exp2():
