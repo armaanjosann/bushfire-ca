@@ -506,7 +506,7 @@ def resolve_p(p_rel: float, *, regime: str, condition: str, b: float, kappa: flo
 #
 # Because the support is finite, the normalising constant is an ordinary finite
 # sum and the maximum-likelihood fit is exact in numpy, with no zeta function
-# and no scipy (DEC-038). Both models are exponential families in the
+# and nothing outside numpy (DEC-038). Both models are exponential families in the
 # sufficient statistics (ln x, x), so the log-likelihood is concave and Newton's
 # method converges from any start.
 #

@@ -21,7 +21,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.analysis import PC_PATH, assert_not_truncated, pc_rows, resolve_p, write_pc_estimates
+from src.analysis import (PC_PATH, TAIL_FITS_PATH, assert_not_truncated, fit_tail, g2_gate,
+                          pc_rows, resolve_p, write_pc_estimates, write_tail_fits)
 from src.model import P_C_LITERATURE, SETTLEMENT_SIDE, Config, RunResult, run_fire
 
 # Run-time tuning. Constants, read at call time and never mutated by this
@@ -1375,8 +1376,164 @@ def run_exp2(exp1_path: str = EXP1_PATH, prepass_path: str = EXP2_PREPASS_PATH,
     return df
 
 
-def run_exp2b():
-    raise NotImplementedError("Experiment 2b (tail statistics) lands in SPEC-15")
+# --- Experiment 2b: tail statistics (SPEC-15, §6.2, §10.2 O4) ----------------
+
+EXP2_PATH = "results/exp2.parquet"        # written by Experiment 2 (SPEC-14)
+EXP2B_PATH = "results/exp2b.parquet"
+EXP2B_L = 256
+EXP2B_B = 0.15
+EXP2B_KAPPA = 0.0
+EXP2B_PHI = -math.pi / 2                  # the orientation the thresholds were measured in (§6.1)
+EXP2B_R = 10_000
+EXP2B_R_RAISED = 50_000                   # the §10.2 O4 G2 escalation
+EXP2B_SEED_BASE = 9_000_000               # clear of 0 (<1M), 0b (1-1.13M), pilot (2M), 1-coarse (3M)
+EXP2B_FAMILIES = ("patches", "strips_perp")  # the levels Experiment 2 selected (DEC-012)
+
+
+def exp2b_levels(exp2_path: str = EXP2_PATH) -> list[tuple[str, dict, float]]:
+    """The four Experiment 2b conditions as (condition, geometry_params, b).
+
+    `none` at b=0 and `random` at b=0.15 are fixed. The `patches` and
+    `strips_perp` levels are read from Experiment 2's own rows, never
+    re-selected here (SPEC-15 Behaviour): each family must appear at exactly one
+    level at b=0.15 in `exp2_path`.
+    """
+    path = Path(exp2_path)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} does not exist. Experiment 2b runs each treated condition at the threshold "
+            "Experiment 2 measured and at the level it selected, so run Experiment 2 (SPEC-14) first."
+        )
+    exp2 = pd.read_parquet(path, columns=["condition", "b", "geometry_params"])
+    levels = [("none", {}, 0.0), ("random", {}, EXP2B_B)]
+    for family in EXP2B_FAMILIES:
+        found = exp2.loc[(exp2["condition"] == family) & (exp2["b"] == EXP2B_B),
+                         "geometry_params"].unique()
+        if len(found) != 1:
+            raise LookupError(
+                f"{path} must hold exactly one {family!r} level at b={EXP2B_B}, found "
+                f"{sorted(found) or 'none'} (DEC-012)"
+            )
+        prm = json.loads(found[0])
+        prm.pop("settlement_side", None)   # Experiment 2 has no settlement; defensive only
+        levels.append((family, prm, EXP2B_B))
+    return levels
+
+
+def exp2b_grid(exp2_path: str = EXP2_PATH, pc_path: str = PC_PATH, replicates: int = EXP2B_R,
+               conditions: Sequence[str] | None = None, size: int = EXP2B_L
+               ) -> tuple[list[Config], list[float]]:
+    """The Experiment 2b grid: `(configs, p_rel)`, parallel, for `run_configs`.
+
+    Each condition runs at its own measured threshold, `resolve_p(0.0, ...)` on
+    its `fss_crossing` row: Experiment 0b's `(STUDY, none, 0, 0)` for `none`,
+    Experiment 2's `(STUDY, condition, 0.15, 0)` for the treated three. `p_rel`
+    is 0.0 for every run: at the condition's own threshold, which §6.2 names
+    as 2b's reference in place of the governing one (DEC-038).
+
+    Seeds are laid out so condition i, replicate r has seed
+    EXP2B_SEED_BASE + i * EXP2B_R_RAISED + r. A G2 escalation to 50,000
+    replicates therefore *extends* the 10,000-run set with the same run_ids and
+    resumes into the same file. `conditions` restricts the grid (the G2
+    escalation narrows it); `size` exists for tests.
+    """
+    if not 1 <= replicates <= EXP2B_R_RAISED:
+        raise ValueError(f"replicates must be in 1..{EXP2B_R_RAISED}, got {replicates}")
+    levels = exp2b_levels(exp2_path)
+    names = [c for c, _, _ in levels]
+    if conditions is not None:
+        unknown = [c for c in conditions if c not in names]
+        if unknown:
+            raise ValueError(f"unknown Experiment 2b conditions {unknown}; valid: {names}")
+    cfgs, p_rels = [], []
+    for i, (condition, prm, b) in enumerate(levels):
+        if conditions is not None and condition not in conditions:
+            continue
+        p = resolve_p(0.0, regime="STUDY", condition=condition, b=b, kappa=EXP2B_KAPPA, path=pc_path)
+        for r in range(replicates):
+            cfgs.append(Config(
+                L=size, regime="STUDY", p=p, f_treat=0.2,
+                beta=0.8, kappa=EXP2B_KAPPA, phi=EXP2B_PHI, tau=1, diagonal_factor=True,
+                condition=condition, b=b, geometry_params=dict(prm),
+                ignition="random_cell", settlement=False,
+                seed=EXP2B_SEED_BASE + i * EXP2B_R_RAISED + r,
+            ))
+            p_rels.append(0.0)
+    return cfgs, p_rels
+
+
+def _check_exp2b_frame(df: pd.DataFrame, n_expected: int) -> None:
+    problems = []
+    if len(df) != n_expected:
+        problems.append(f"{len(df)} rows, expected {n_expected}")
+    if df["truncated"].any():
+        problems.append("truncated rows present (raise max_steps, do not filter, §3.7, I10)")
+    if not df["run_id"].is_unique:
+        problems.append("run_id is not unique")
+    fixed = {"regime": "STUDY", "beta": 0.8, "f_treat": 0.2, "tau": 1.0, "kappa": EXP2B_KAPPA,
+             "phi": EXP2B_PHI, "diagonal_factor": True, "ignition": "random_cell",
+             "settlement": False}
+    for col, want in fixed.items():
+        if not (df[col] == want).all():
+            problems.append(f"{col} is not {want!r} on every row")
+    if df["spanned"].notna().any() or df["reached_edge"].isna().any():
+        problems.append("spanned/reached_edge nullness is wrong for random_cell ignition (§3.5)")
+    if problems:
+        raise AssertionError("Experiment 2b frame failed: " + "; ".join(problems))
+
+
+def exp2b_fits(df: pd.DataFrame, replicates: int) -> list[dict]:
+    """One tail fit per condition-level in `df` (rows of TAIL_COLUMNS).
+
+    Burn size is `burned_cells`; the support is bounded by the lattice,
+    `x_max = L*L` (DEC-038).
+    """
+    assert_not_truncated(df)
+    rows = []
+    for (condition, prm), sub in df.groupby(["condition", "geometry_params"], sort=False):
+        L = int(sub["L"].iloc[0])
+        fit = fit_tail(sub["burned_cells"].to_numpy(), x_max=L * L)
+        rows.append({"experiment": "2b", "condition": condition, "geometry_params": prm,
+                     "b": float(sub["b"].iloc[0]), "replicates": int(replicates),
+                     "p": float(sub["p"].iloc[0]), "kappa": float(sub["kappa"].iloc[0]),
+                     "L": L, **fit})
+    return rows
+
+
+def run_exp2b(exp2_path: str = EXP2_PATH, pc_path: str = PC_PATH, out_path: str = EXP2B_PATH,
+              fits_path: str = TAIL_FITS_PATH, replicates: int = EXP2B_R,
+              conditions: Sequence[str] | None = None, size: int = EXP2B_L) -> pd.DataFrame:
+    """Experiment 2b: run the tail grid, fit each condition, report gate G2.
+
+    Fits are recorded only for a full-size run at R = 10,000 (all four
+    conditions) or R = 50,000 (the G2 escalation, any subset); any other
+    replicate count or lattice size is a staged run that records nothing, as
+    in `run_exp0`. Gate G2 is printed, not acted on: raising R is a team
+    decision recorded in §10.2 O4 (SPEC-15 Behaviour). Returns the fits.
+    """
+    cfgs, p_rels = exp2b_grid(exp2_path, pc_path, replicates, conditions, size)
+    df = run_configs(cfgs, out_path, p_rel=p_rels)
+    df = df[df["run_id"].isin({config_run_id(c) for c in cfgs})]   # this request's rows only
+    _check_exp2b_frame(df, len(cfgs))
+
+    fits = pd.DataFrame(exp2b_fits(df, replicates))
+    full = size == EXP2B_L and (
+        (replicates == EXP2B_R and conditions is None) or replicates == EXP2B_R_RAISED)
+    if full:
+        write_tail_fits(fits, fits_path)
+    else:
+        print(f"Experiment 2b staged run (R={replicates}, L={size}): no fits recorded.")
+
+    show = ["condition", "geometry_params", "p", "x_min", "n_tail", "alpha", "alpha_stderr",
+            "cutoff", "cutoff_lo", "cutoff_hi", "cutoff_p_value", "decades_above_xmin"]
+    print(fits[show].round(4).to_string(index=False))
+    gate = g2_gate(fits)
+    print("Gate G2 (>= 2 decades of tail above x_min, §10.2 O4):")
+    print(gate.to_string(index=False))
+    if not gate["passes"].all():
+        print("G2 fails for some conditions. Decide whether to rerun at R=50,000 "
+              "(run_exp2b(replicates=50_000, conditions=[...])) and record it in §10.2 O4.")
+    return fits
 
 
 def run_exp3():
