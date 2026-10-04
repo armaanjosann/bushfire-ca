@@ -1,7 +1,7 @@
 ---
 id: SPEC-12
 title: Settlement-size pilot, coarse Experiment 1, parameter freeze
-status: not started
+status: in review
 owner: Aaron
 reviewer: Armaan
 phase: P4 — Parameter freeze (Sprint 2)
@@ -10,7 +10,7 @@ implements: [§10.2 O1, §3.6, §6.2 Exp 1]
 issue:
 branch: spec/SPEC-12-parameter-freeze
 pr:
-decisions: [DEC-003, DEC-007, DEC-011, DEC-015]
+decisions: [DEC-003, DEC-007, DEC-011, DEC-015, DEC-037]
 ---
 
 # SPEC-12 — Settlement pilot, coarse Experiment 1, parameter freeze

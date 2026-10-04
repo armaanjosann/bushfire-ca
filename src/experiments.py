@@ -21,8 +21,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.analysis import PC_PATH, assert_not_truncated, pc_rows, write_pc_estimates
-from src.model import P_C_LITERATURE, Config, RunResult, run_fire
+from src.analysis import PC_PATH, assert_not_truncated, pc_rows, resolve_p, write_pc_estimates
+from src.model import P_C_LITERATURE, SETTLEMENT_SIDE, Config, RunResult, run_fire
 
 # Run-time tuning. Constants, read at call time and never mutated by this
 # module (§8: no global mutable state).
@@ -638,6 +638,259 @@ def run_exp0b(sizes: Sequence[int] = EXP0B_L, prepass_path: str = EXP0B_PREPASS_
                       f"p_c = {crossing['p_c']:.4f} ± {crossing['p_c_stderr']:.4f}")
     write_pc_estimates(rows, pc_path)
     print("Experiment 0b: " + "; ".join(report))
+    return df
+
+
+# --- Settlement-size pilot (SPEC-12, project-context.md §10.2 O1) -------------
+
+PILOT_PATH = "results/pilot_settlement.parquet"
+PILOT_L = 256
+PILOT_SIDES = (8, 16, 32, 48)
+PILOT_KAPPAS = (0.0, 2.0)
+PILOT_P_REL = 0.05
+PILOT_R = 50
+PILOT_CONTROL_R = len(PILOT_SIDES) * PILOT_R  # no-settlement runs per kappa
+PILOT_SEED_BASE = 2_000_000  # clear of Experiments 0 and 0b (below 1.13M)
+
+# The §10.2 O1 decision rule. Constants, fixed before the pilot was run (DEC-037).
+P_REACH_BAND = (0.3, 0.8)  # rule 1: baseline P(settlement_reached)
+N_OCC_TOLERANCE = 0.01     # rule 2: relative n_occupied drift versus no settlement
+
+
+def pilot_grid(pc_path: str = PC_PATH, replicates: int = PILOT_R
+               ) -> tuple[list[Config], list[float | None]]:
+    """The §10.2 O1 pilot: `(configs, p_rel)`, parallel, ready for `run_configs`.
+
+    Settlement runs: side x kappa x `replicates`, `b=0`, `condition="none"`,
+    `p = p_c(kappa) + 0.05` resolved against Experiment 0b. Control runs: the
+    "no-settlement case at the same p" that rule 2 compares `n_occupied` with,
+    `PILOT_CONTROL_R` per kappa, with `settlement=False` and no
+    `settlement_side` key (§3.6). With the default `replicates` that is
+    400 + 400 = 800 runs. Seeds are positions in the full grid, so a run's
+    `run_id` does not depend on `replicates`.
+    """
+    if not 1 <= replicates <= PILOT_R:
+        raise ValueError(f"replicates must be in 1..{PILOT_R}, got {replicates}")
+    n_sides, n_kappas = len(PILOT_SIDES), len(PILOT_KAPPAS)
+    cfgs, p_rels = [], []
+
+    def make(kappa, p, seed, settlement, params):
+        return Config(
+            L=PILOT_L, regime="STUDY", p=p, f_treat=0.2,
+            beta=0.8, kappa=kappa, phi=0.0, tau=1, diagonal_factor=True,
+            condition="none", b=0.0, geometry_params=params,
+            ignition="random_cell", settlement=settlement, seed=seed,
+        )
+
+    for i_k, kappa in enumerate(PILOT_KAPPAS):
+        p = resolve_p(PILOT_P_REL, regime="STUDY", condition="none", b=0.0, kappa=kappa, path=pc_path)
+        for i_s, side in enumerate(PILOT_SIDES):
+            for r in range(replicates):
+                seed = PILOT_SEED_BASE + (i_s * n_kappas + i_k) * PILOT_R + r
+                cfgs.append(make(kappa, p, seed, True, {"settlement_side": side}))
+                p_rels.append(PILOT_P_REL)
+        base = PILOT_SEED_BASE + n_sides * n_kappas * PILOT_R + i_k * PILOT_CONTROL_R
+        for c in range(n_sides * replicates):
+            cfgs.append(make(kappa, p, base + c, False, {}))
+            p_rels.append(PILOT_P_REL)
+    return cfgs, p_rels
+
+
+def _check_pilot_frame(df: pd.DataFrame, n_expected: int) -> None:
+    problems = []
+    if len(df) != n_expected:
+        problems.append(f"{len(df)} rows, expected {n_expected}")
+    if df["truncated"].any():
+        problems.append("truncated rows present (raise max_steps, do not filter, §3.7)")
+    if not df["run_id"].is_unique:
+        problems.append("run_id is not unique")
+    fixed = {"regime": "STUDY", "condition": "none", "b": 0.0, "L": PILOT_L, "beta": 0.8,
+             "f_treat": 0.2, "tau": 1.0, "diagonal_factor": True, "ignition": "random_cell"}
+    for col, want in fixed.items():
+        if not (df[col] == want).all():
+            problems.append(f"{col} is not {want!r} on every row")
+    s = df[df["settlement"]]
+    if s["settlement_reached"].isna().any():
+        problems.append("settlement_reached is null on a settlement run")
+    if df.loc[~df["settlement"], "settlement_reached"].notna().any():
+        problems.append("settlement_reached is non-null on a no-settlement run")
+    if df["reached_edge"].isna().any() or df["spanned"].notna().any():
+        problems.append("reached_edge/spanned nullness is wrong for random_cell ignition (§3.5)")
+    if problems:
+        raise AssertionError("Settlement pilot frame failed: " + "; ".join(problems))
+
+
+def pilot_decision(df: pd.DataFrame) -> dict:
+    """Apply the §10.2 O1 decision rule to the pilot frame.
+
+    Returns `{"table": DataFrame, "chosen": int | None}`. `table` has one row
+    per (side, kappa): baseline `p_reach` over the settlement runs, its Wilson
+    95% interval, mean `n_occupied`, and `drift`, the relative difference from
+    the no-settlement runs at the same kappa (hence the same p).
+
+    Rule 1 takes the smallest side whose `p_reach` is in `P_REACH_BAND`; rule 2
+    rejects a side whose `|drift|` exceeds `N_OCC_TOLERANCE`. Both are read at
+    *both* kappa: Experiment 1 runs at both, so a side that only works at one
+    would discriminate geometries at one wind strength and saturate at the
+    other (DEC-037). `chosen` is None when no side passes, which is branch 3 of
+    the rule, not a licence to relax branches 1 and 2.
+    """
+    assert_not_truncated(df)
+    rows = []
+    for kappa in PILOT_KAPPAS:
+        k = df[df["kappa"] == kappa]
+        control = k[~k["settlement"]]["n_occupied"].mean()
+        for side in PILOT_SIDES:
+            sub = k[k["settlement"] & (k["geometry_params"] == _dumps({"settlement_side": side}))]
+            if sub.empty:
+                raise ValueError(f"pilot frame has no rows for side={side}, kappa={kappa:g}")
+            n = len(sub)
+            hits = int(sub["settlement_reached"].astype(bool).sum())
+            phat = hits / n
+            z = 1.96
+            centre = (phat + z * z / (2 * n)) / (1 + z * z / n)
+            half = z * math.sqrt(phat * (1 - phat) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+            rows.append({
+                "side": side, "kappa": kappa, "n": n, "p_reach": phat,
+                "ci_lo": centre - half, "ci_hi": centre + half,
+                "n_occupied": sub["n_occupied"].mean(),
+                "control_n_occupied": control,
+                "drift": sub["n_occupied"].mean() / control - 1.0,
+            })
+    table = pd.DataFrame(rows)
+    lo, hi = P_REACH_BAND
+    table["in_band"] = table["p_reach"].between(lo, hi)
+    table["drift_ok"] = table["drift"].abs() <= N_OCC_TOLERANCE
+    ok = table.groupby("side")[["in_band", "drift_ok"]].all().all(axis=1)
+    passing = [s for s in PILOT_SIDES if ok[s]]
+    return {"table": table, "chosen": min(passing) if passing else None}
+
+
+def run_pilot(out_path: str = PILOT_PATH, pc_path: str = PC_PATH,
+              replicates: int = PILOT_R) -> pd.DataFrame:
+    """Run the settlement pilot and report the §10.2 O1 decision.
+
+    Writes `out_path`, then prints baseline `P(settlement_reached)` and the
+    `n_occupied` drift per side and kappa, and which side the rule selects. It
+    edits nothing: `SETTLEMENT_SIDE` and `project-context.md` §3.6 / §10.2 are
+    changed by hand from this output, in the same PR (SPEC-12).
+    """
+    cfgs, p_rels = pilot_grid(pc_path, replicates)
+    df = run_configs(cfgs, out_path, p_rel=p_rels)
+    _check_pilot_frame(df, len(cfgs))
+
+    res = pilot_decision(df)
+    t = res["table"]
+    print("Settlement pilot (L=256, b=0, condition=none, p_rel=+0.05, R="
+          f"{replicates}); band {P_REACH_BAND}, drift tolerance {N_OCC_TOLERANCE:.0%}")
+    for kappa in PILOT_KAPPAS:
+        sub = t[t["kappa"] == kappa]
+        p = float(df[(df["kappa"] == kappa) & df["settlement"]]["p"].iloc[0])
+        print(f"  kappa={kappa:g}  p={p:.4f}  control n_occupied={sub['control_n_occupied'].iloc[0]:.1f}")
+        for _, r in sub.iterrows():
+            print(f"    side={int(r['side']):>2}  P(reached)={r['p_reach']:.3f} "
+                  f"[{r['ci_lo']:.3f}, {r['ci_hi']:.3f}] {'in band' if r['in_band'] else 'OUT'}  "
+                  f"drift={r['drift']:+.4%} {'ok' if r['drift_ok'] else 'REJECT'}")
+    if res["chosen"] is None:
+        print("No side satisfies both rules: branch 3, switch the SQ4 metric to "
+              "settlement_reached_step (§10.2 O1).")
+    else:
+        print(f"Rule selects SETTLEMENT_SIDE = {res['chosen']}")
+    return df
+
+
+# --- Coarse Experiment 1 (SPEC-12, project-context.md §6.2) -------------------
+
+EXP1C_PATH = "results/exp1_coarse.parquet"
+EXP1C_L = 256
+EXP1C_KAPPAS = (0.0, 2.0)
+EXP1C_P_REL = (-0.05, 0.0, 0.05)
+EXP1C_P_ABS = 0.70
+EXP1C_B = (0.10, 0.15, 0.20, 0.30)  # plus b=0, run as `none` only (§6.2)
+EXP1C_R = 20  # of Experiment 1's R=200
+EXP1C_SEED_BASE = 3_000_000
+EXP1C_LEVELS = (
+    [("random", {})]
+    + [("patches", {"k": k}) for k in (4, 8, 16)]
+    + [("strips_perp", {"w": w}) for w in (4, 8, 16)]
+    + [("strips_para", {"w": w}) for w in (4, 8, 16)]
+    + [("buffer", {})]
+)  # the 11 treated condition-levels; `none` is the twelfth, at b=0 only
+
+
+def exp1_coarse_grid(pc_path: str = PC_PATH, side: int = SETTLEMENT_SIDE,
+                     replicates: int = EXP1C_R) -> tuple[list[Config], list[float | None]]:
+    """The coarse Experiment 1 grid: `(configs, p_rel)`, parallel, for `run_configs`.
+
+    Reduces replicates (R=20) and the `b` grid, and keeps every condition-level
+    (SPEC-12). Every config has `settlement=True` and writes `settlement_side`
+    explicitly (§3.6, DEC-015), set to the frozen `SETTLEMENT_SIDE`. `p` is
+    `p_c(kappa) + p_rel` resolved against Experiment 0b, plus the absolute
+    `p=0.70` with `p_rel` null. `none` appears at `b=0` only; the other 11
+    levels at every `b` above 0.
+
+    Seed is the run's position in this grid (kappa, p, condition-level, b,
+    replicate).
+    """
+    if not 1 <= replicates <= EXP1C_R:
+        raise ValueError(f"replicates must be in 1..{EXP1C_R}, got {replicates}")
+    points = [("none", {}, 0.0)] + [(c, prm, b) for c, prm in EXP1C_LEVELS for b in EXP1C_B]
+    cfgs, p_rels = [], []
+    pos = 0
+    for kappa in EXP1C_KAPPAS:
+        ps = [(resolve_p(rel, regime="STUDY", condition="none", b=0.0, kappa=kappa, path=pc_path), rel)
+              for rel in EXP1C_P_REL] + [(EXP1C_P_ABS, None)]
+        for p, rel in ps:
+            for condition, prm, b in points:
+                for r in range(replicates):
+                    cfgs.append(Config(
+                        L=EXP1C_L, regime="STUDY", p=p, f_treat=0.2,
+                        beta=0.8, kappa=kappa, phi=0.0, tau=1, diagonal_factor=True,
+                        condition=condition, b=b,
+                        geometry_params={**prm, "settlement_side": side},
+                        ignition="random_cell", settlement=True,
+                        seed=EXP1C_SEED_BASE + pos * EXP1C_R + r,
+                    ))
+                    p_rels.append(rel)
+                pos += 1
+    return cfgs, p_rels
+
+
+def _check_exp1c_frame(df: pd.DataFrame, n_expected: int) -> None:
+    problems = []
+    if len(df) != n_expected:
+        problems.append(f"{len(df)} rows, expected {n_expected}")
+    if df["truncated"].any():
+        problems.append("truncated rows present (raise max_steps, do not filter, §3.7)")
+    if not df["run_id"].is_unique:
+        problems.append("run_id is not unique")
+    fixed = {"regime": "STUDY", "L": EXP1C_L, "beta": 0.8, "f_treat": 0.2, "tau": 1.0,
+             "diagonal_factor": True, "ignition": "random_cell", "settlement": True}
+    for col, want in fixed.items():
+        if not (df[col] == want).all():
+            problems.append(f"{col} is not {want!r} on every row")
+    if df["settlement_reached"].isna().any():
+        problems.append("settlement_reached is null on a settlement run")
+    if df["reached_edge"].isna().any() or df["spanned"].notna().any():
+        problems.append("reached_edge/spanned nullness is wrong for random_cell ignition (§3.5)")
+    if not ((df["condition"] == "none") == (df["b"] == 0.0)).all():
+        problems.append("`none` must appear at b=0 and only there (§6.2)")
+    if problems:
+        raise AssertionError("Coarse Experiment 1 frame failed: " + "; ".join(problems))
+
+
+def run_exp1_coarse(out_path: str = EXP1C_PATH, pc_path: str = PC_PATH,
+                    side: int = SETTLEMENT_SIDE, replicates: int = EXP1C_R) -> pd.DataFrame:
+    """Coarse Experiment 1: the reduced grid, to locate the interesting region.
+
+    Runs after `run_pilot` has fixed `SETTLEMENT_SIDE`. A look at the data, not a
+    result: SPEC-13 runs the full grid.
+    """
+    cfgs, p_rels = exp1_coarse_grid(pc_path, side, replicates)
+    df = run_configs(cfgs, out_path, p_rel=p_rels)
+    _check_exp1c_frame(df, len(cfgs))
+    print(f"Coarse Experiment 1: {len(df)} rows in {out_path} (settlement_side={side}, "
+          f"R={replicates}).")
     return df
 
 
