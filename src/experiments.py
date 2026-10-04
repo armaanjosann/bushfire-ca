@@ -1091,8 +1091,203 @@ def run_scars(out_path: str = SCARS_PATH, pc_path: str = PC_PATH,
     return run_ids
 
 
-def run_exp2():
-    raise NotImplementedError("Experiment 2 (threshold shift) lands in SPEC-14")
+# --- Experiment 2: threshold shift (SPEC-14, §6.2, DEC-012) ------------------
+
+EXP2_PATH = "results/exp2.parquet"
+EXP2_PREPASS_PATH = "results/exp2_prepass.parquet"
+EXP2_B = 0.15
+EXP2_KAPPA = 0.0
+EXP2_PHI = -math.pi / 2          # §6.1: wind (none here) and strips_perp bands across the spanning direction
+EXP2_L = (128, 256, 512)
+EXP2_R = 500
+EXP2_HALF_WIDTH = 0.05           # declared sweep: centre +/- 0.05 ...
+EXP2_P_STEP = 0.005              # ... at step 0.005 ...
+EXP2_N_P = 21                    # ... = 21 points per condition (SPEC-14 acceptance)
+EXP2_PREPASS_L = 128
+EXP2_PREPASS_R = 100
+EXP2_PREPASS_P = tuple(round(0.40 + 0.01 * i, 2) for i in range(61))  # 0.40 .. 1.00
+EXP2_SEED_BASE = 5_000_000       # pre-pass from here, sweep from +1,000,000; clear of Exp 1 (4.0-4.11M)
+EXP2_SWEEP_SEED_OFFSET = 1_000_000
+EXP2_FAMILIES = ("patches", "strips_perp")
+EXP2_SELECT_P_REL = 0.05         # the §6.2 selection cell: b=0.15, p_rel=+0.05, kappa=0
+
+
+def exp2_selection(exp1_path: str = EXP1_PATH) -> dict[str, dict]:
+    """Apply the §6.2 selection rule (DEC-012, recorded in DEC-039 before Exp 1 ran).
+
+    Among each family's three levels, the lowest mean `burned_fraction` in
+    Experiment 1 at b=0.15, p_rel=+0.05, kappa=0. Returns
+    {family: {"params": {...}, "means": {label: mean}}} so the numbers behind
+    the choice can be quoted.
+    """
+    path = Path(exp1_path)
+    if not path.exists():
+        raise FileNotFoundError(f"{path} does not exist; run Experiment 1 (SPEC-13) first")
+    df = pd.read_parquet(path, columns=["condition", "geometry_params", "b", "kappa", "p_rel",
+                                        "burned_fraction"])
+    cell = df[(df["b"] == EXP2_B) & (df["kappa"] == EXP2_KAPPA)
+              & np.isclose(df["p_rel"].fillna(np.inf), EXP2_SELECT_P_REL)]
+    out = {}
+    for family in EXP2_FAMILIES:
+        sub = cell[cell["condition"] == family]
+        means = sub.groupby("geometry_params")["burned_fraction"].mean()
+        if len(means) != 3:
+            raise LookupError(f"Experiment 1 has {len(means)} {family} levels in the selection cell, expected 3")
+        best = means.idxmin()
+        prm = {k: v for k, v in json.loads(best).items() if k != "settlement_side"}
+        labels = {_dumps({k: v for k, v in json.loads(g).items() if k != "settlement_side"}): float(m)
+                  for g, m in means.items()}
+        out[family] = {"params": prm, "means": labels}
+    return out
+
+
+def exp2_levels(exp1_path: str = EXP1_PATH) -> list[tuple[str, dict]]:
+    """The three measured conditions: random, patches(k*), strips_perp(w*). No `none` arm:
+    the untreated reference is Experiment 0b's kappa=0 row (SPEC-14 scope)."""
+    sel = exp2_selection(exp1_path)
+    return [("random", {})] + [(f, sel[f]["params"]) for f in EXP2_FAMILIES]
+
+
+def _exp2_config(L: int, p: float, condition: str, prm: dict, seed: int) -> Config:
+    return Config(
+        L=L, regime="STUDY", p=p, f_treat=0.2,
+        beta=0.8, kappa=EXP2_KAPPA, phi=EXP2_PHI, tau=1, diagonal_factor=True,
+        condition=condition, b=EXP2_B, geometry_params=dict(prm),
+        ignition="edge", settlement=False, seed=seed,
+    )
+
+
+def exp2_prepass_grid(levels: list[tuple[str, dict]], replicates: int = EXP2_PREPASS_R) -> list[Config]:
+    """L=128, p in [0.40, 1.00] step 0.01, per condition: locates each centre (DEC-040).
+    The range runs to p=1 because a strip layout's threshold can sit far above the
+    untreated one, which is the effect this experiment exists to measure."""
+    if not 1 <= replicates <= EXP2_PREPASS_R:
+        raise ValueError(f"replicates must be in 1..{EXP2_PREPASS_R}, got {replicates}")
+    n_p = len(EXP2_PREPASS_P)
+    return [
+        _exp2_config(EXP2_PREPASS_L, p, cond, prm, EXP2_SEED_BASE + (i_c * n_p + i_p) * EXP2_PREPASS_R + r)
+        for i_c, (cond, prm) in enumerate(levels)
+        for i_p, p in enumerate(EXP2_PREPASS_P)
+        for r in range(replicates)
+    ]
+
+
+def exp2_centres(prepass: pd.DataFrame, levels: list[tuple[str, dict]]) -> dict[str, float]:
+    """Each condition's sweep centre: the smallest pre-pass p with P(span) >= 0.5, to the
+    nearest 0.005, the Experiment 0b rule (SPEC-19). Raises if not bracketed, or if the
+    sweep would run past p = 1."""
+    assert_not_truncated(prepass)
+    centres = {}
+    for cond, _ in levels:
+        sub = prepass[prepass["condition"] == cond]
+        if sub.empty or sub["spanned"].isna().any():
+            raise ValueError(f"pre-pass has no usable rows for {cond!r}")
+        frac = sub.assign(hit=sub["spanned"].astype(bool)).groupby(sub["p"].round(6))["hit"].mean().sort_index()
+        above = frac[frac >= 0.5]
+        if above.empty:
+            raise ValueError(f"{cond}: P(span) never reaches 0.5 by p=1 (max {frac.max():.2f}). Raise a DEC.")
+        first = float(above.index[0])
+        if first <= float(frac.index[0]) + 1e-9:
+            raise ValueError(f"{cond}: P(span) >= 0.5 already at p={first:.2f}; not bracketed. Raise a DEC.")
+        centre = round(round(first / EXP2_P_STEP) * EXP2_P_STEP, 3)
+        if centre + EXP2_HALF_WIDTH > 1.0 + 1e-9:
+            raise ValueError(f"{cond}: centre {centre} puts the sweep past p=1. Raise a DEC.")
+        centres[cond] = centre
+    return centres
+
+
+def exp2_p_values(centre: float) -> tuple[float, ...]:
+    """The 21 declared sweep points: centre +/- 0.05 at step 0.005."""
+    return tuple(round(centre + EXP2_P_STEP * (i - EXP2_N_P // 2), 3) for i in range(EXP2_N_P))
+
+
+def exp2_grid(levels: list[tuple[str, dict]], centres: dict[str, float],
+              sizes: Sequence[int] = EXP2_L, replicates: int = EXP2_R) -> list[Config]:
+    """The §6.2 Experiment 2 sweep. Seed is the run's position in the full grid
+    (condition, p, L, replicate), so a staged run resumes into the full one."""
+    if not 1 <= replicates <= EXP2_R:
+        raise ValueError(f"replicates must be in 1..{EXP2_R}, got {replicates}")
+    unknown = [L for L in sizes if L not in EXP2_L]
+    if unknown:
+        raise ValueError(f"sizes {unknown} are not in the Experiment 2 grid {EXP2_L}")
+    base0 = EXP2_SEED_BASE + EXP2_SWEEP_SEED_OFFSET
+    cfgs = []
+    for i_c, (cond, prm) in enumerate(levels):
+        for i_p, p in enumerate(exp2_p_values(centres[cond])):
+            for L in sorted(sizes):
+                i_L = EXP2_L.index(L)
+                base = base0 + (((i_c * EXP2_N_P + i_p) * len(EXP2_L)) + i_L) * EXP2_R
+                cfgs.extend(_exp2_config(L, p, cond, prm, base + r) for r in range(replicates))
+    return cfgs
+
+
+def _check_exp2_frame(df: pd.DataFrame, n_expected: int, what: str) -> None:
+    problems = []
+    if len(df) != n_expected:
+        problems.append(f"{len(df)} rows, expected {n_expected}")
+    if df["truncated"].any():
+        problems.append("truncated rows present (raise max_steps, do not filter, §3.7, I10)")
+    if not df["run_id"].is_unique:
+        problems.append("run_id is not unique")
+    fixed = {"regime": "STUDY", "b": EXP2_B, "kappa": EXP2_KAPPA, "phi": EXP2_PHI, "beta": 0.8,
+             "f_treat": 0.2, "tau": 1.0, "diagonal_factor": True, "ignition": "edge",
+             "settlement": False}
+    for col, want in fixed.items():
+        if not (df[col] == want).all():
+            problems.append(f"{col} is not {want!r} on every row")
+    if (df["condition"] == "none").any():
+        problems.append("a `none` row is present (the reference is Experiment 0b)")
+    if df["reached_edge"].notna().any() or df["spanned"].isna().any():
+        problems.append("reached_edge must be null and spanned non-null under edge ignition (§3.5)")
+    if problems:
+        raise AssertionError(f"Experiment 2 {what} frame failed: " + "; ".join(problems))
+
+
+def run_exp2(exp1_path: str = EXP1_PATH, prepass_path: str = EXP2_PREPASS_PATH,
+             out_path: str = EXP2_PATH, pc_path: str = PC_PATH, sizes: Sequence[int] = EXP2_L,
+             replicates: int = EXP2_R, centres: dict[str, float] | None = None) -> pd.DataFrame:
+    """Experiment 2: selection, pre-pass, sweep, and per-condition STUDY thresholds.
+
+    Writes the pre-pass, centres each condition on it (DEC-040), runs the sweep,
+    then appends one `fss_crossing` and three `var_peak` rows per condition through
+    `pc_rows` / `write_pc_estimates`. A staged run (fewer sizes or replicates)
+    records no threshold. Every crossing must lie strictly inside its own range,
+    and all three are checked before any is written. `centres` overrides the
+    pre-pass, for re-centring a condition whose crossing fell outside its range.
+    """
+    levels = exp2_levels(exp1_path)
+    print("Experiment 2 conditions: " + ", ".join(f"{c}{_dumps(p) if p else ''}" for c, p in levels))
+
+    prepass = run_configs(exp2_prepass_grid(levels), prepass_path)
+    _check_exp2_frame(prepass, len(levels) * len(EXP2_PREPASS_P) * EXP2_PREPASS_R, "pre-pass")
+    centres = exp2_centres(prepass, levels) if centres is None else dict(centres)
+    print("Experiment 2 sweep centres: " + ", ".join(f"{c}: {centres[c]:.3f}" for c, _ in levels))
+
+    cfgs = exp2_grid(levels, centres, sizes, replicates)
+    df = run_configs(cfgs, out_path)
+    df = df[df["run_id"].isin({config_run_id(c) for c in cfgs})]
+    _check_exp2_frame(df, len(cfgs), "sweep")
+
+    if tuple(sorted(sizes)) != EXP2_L or replicates != EXP2_R:
+        print(f"Experiment 2 staged run: {len(df)} rows; no p_c recorded (not the full grid).")
+        return df
+
+    rows, report = [], []
+    for cond, _ in levels:
+        cond_rows = pc_rows(df[df["condition"] == cond], cond, "STUDY")
+        crossing = next(r for r in cond_rows if r["method"] == "fss_crossing")
+        lo = round(centres[cond] - EXP2_HALF_WIDTH, 3)
+        hi = round(centres[cond] + EXP2_HALF_WIDTH, 3)
+        if not lo < crossing["p_c"] < hi:
+            raise AssertionError(
+                f"{cond}: crossing p_c = {crossing['p_c']:.4f} is not strictly inside its sweep range "
+                f"({lo}, {hi}). Re-centre with `centres=` and rerun that condition; do not extrapolate."
+            )
+        rows.extend(cond_rows)
+        report.append(f"{cond}: centre {centres[cond]:.3f}, p_c = {crossing['p_c']:.4f} ± {crossing['p_c_stderr']:.4f}")
+    write_pc_estimates(rows, pc_path)
+    print("Experiment 2: " + "; ".join(report))
+    return df
 
 
 def run_exp2b():
