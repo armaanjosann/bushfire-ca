@@ -955,3 +955,40 @@ This commit precedes the commit that adds `results/exp1.parquet`, so the rule is
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-040 — SPEC-14: each condition's sweep is centred on its own pre-pass, not on the untreated threshold
+
+- **Date:** 2026-10-04
+- **Raised by:** Armaan (SPEC-14)
+- **Spec:** SPEC-14
+- **Type:** deviation
+- **Status:** resolved — reviewer to confirm
+
+**Situation.** SPEC-14 centres every condition's 21-point sweep on the untreated `kappa = 0` threshold, 0.4769 ± 0.05, and says that if a crossing falls outside, "shift that condition's range and rerun it". A quick L = 128 check (80 runs per point, b = 0.15, edge ignition, `phi = −π/2`) put P(span) = 0.5 at about 0.53 for `random`, 0.52 for `patches(4)` and 0.76 for `strips_perp(4)`. All three sit at or beyond the top of the declared window (0.527), so following the spec literally would run the full sweep once, fail the in-range check for every condition, and run it again. At L = 512 that is the expensive half of the experiment.
+
+**Decision.** Shift each range *before* the sweep rather than after it, using the same two-step procedure SPEC-19 uses for Experiment 0b:
+
+- **Pre-pass:** L = 128, R = 100, `p ∈ [0.40, 1.00]` step 0.01, per condition, written to `results/exp2_prepass.parquet`. The range runs to p = 1 because a strip layout can move the threshold far above the untreated one, which is the effect under test.
+- **Centre:** the smallest pre-pass `p` with P(span) ≥ 0.5, rounded to 0.005, per condition (the SPEC-19 rule). The build raises if P(span) never reaches 0.5 by p = 1, if it already has at p = 0.40, or if the sweep would run past p = 1.
+- **Sweep:** unchanged from the spec and declared as constants — centre ± 0.05 at step 0.005 (21 points), L ∈ {128, 256, 512}, R = 500. The in-range check on every crossing still applies, and `run_exp2(centres=...)` re-centres one condition by hand if needed.
+
+The window width, step, point count, lattice sizes and replicate count are exactly the spec's; only the centre moves, which the spec already allows.
+
+**Selection (§6.2 rule, recorded in DEC-039 before Experiment 1 ran).** Mean `burned_fraction` at b = 0.15, p_c + 0.05, kappa = 0, R = 200:
+
+| family | level | mean |
+|---|---|---|
+| patches | **k = 4** | **0.1231** |
+| patches | k = 8 | 0.2105 |
+| patches | k = 16 | 0.2479 |
+| strips_perp | **w = 4** | **0.0186** |
+| strips_perp | w = 8 | 0.0592 |
+| strips_perp | w = 16 | 0.1150 |
+
+**Other choices.** Seeds: pre-pass from 5,000,000, sweep from 6,000,000, each laid out by position so a staged run resumes into the full one. `phi = −π/2`, so `strips_perp` bands run across the spanning direction (§6.1). Tests are in a new `tests/test_exp2.py`, which the may-touch list omits.
+
+**Risk to watch.** Under `strips_perp`, the number of bands a fire must cross grows with L at fixed spacing, so P(span) at fixed `p` may fall with L rather than steepen around a fixed point. If the three curves do not cross inside the range, `pc_rows` or the in-range check raises and nothing is written; that outcome is itself a finding and goes in a new DEC, not into an extrapolated number.
+
+**Context impact.** none
+
+**Commit.** pending
