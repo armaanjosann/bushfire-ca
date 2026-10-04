@@ -22,8 +22,7 @@ BURNING = 2
 BURNT = 3
 SETTLEMENT = 4
 
-# Provisional. Bound by the pilot in project-context.md §10.2 O1, owned by
-# SPEC-12. Do not resolve it here (workflow-rules.md §7) — this is only the
+# Frozen by the pilot in project-context.md §10.2 O1 (SPEC-12, DEC-037). The
 # default used when geometry_params lacks an explicit "settlement_side".
 SETTLEMENT_SIDE = 16
 

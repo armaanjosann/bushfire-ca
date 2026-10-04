@@ -886,3 +886,42 @@ Acceptance criteria, row identity (DEC-004) and the I1 binding (DEC-014) are unc
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-037 — SPEC-12: settlement pilot outcome, `SETTLEMENT_SIDE` freeze, and choices the spec left open
+- **Date:** 2026-10-04
+- **Raised by:** Aaron (on SPEC-12)
+- **Spec:** SPEC-12
+- **Type:** contract change
+- **Status:** resolved - reviewer to confirm the `SETTLEMENT_SIDE = 16` judgement below
+
+**Situation.** SPEC-12 runs the §10.2 O1 pilot and writes the outcome into the specification. It is silent on how many of the "~800" pilot runs are controls, how the two `kappa` arms combine under rule 1 and rule 2, what to freeze when the rule selects no side, and the shape of the coarse Experiment 1 grid. One process point: `depends_on` lists SPEC-05, SPEC-06 and SPEC-19, none of which is `done`. Implemented at the project lead's instruction, stacked on the open branches; `results/pc_estimates.parquet` already holds the Experiment 0b rows the pilot resolves against.
+
+**Outcome.** Branch 3 of the §10.2 O1 rule.
+
+| side | `kappa=0`, `p=0.5269` P(reached) | drift | `kappa=2`, `p=0.5504` P(reached) | drift |
+|---|---|---|---|---|
+| 8 | 0.96 | −0.15% | 0.10 | −0.10% |
+| 16 | 0.92 | −0.39% | 0.18 | −0.51% |
+| 32 | 0.94 | −1.54% (reject) | 0.18 | −1.63% (reject) |
+| 48 | 0.94 | −3.54% (reject) | 0.14 | −3.54% (reject) |
+
+No side lies in [0.3, 0.8] at either `kappa`, so the result does not depend on whether rule 1 is read as "both" or "either". Rule 2 independently rejects 32 and 48 (their drift is `side²/L²` by construction). 800 runs, none truncated. `settlement_reached_step` among reached runs: median 104 / 92 / 91 / 134 steps (sides 16 / 32 / 48 / 8) at `kappa=0`, 46–48 of 50 reached; at `kappa=2` only 5–9 of 50 reach, so it is heavily censored there.
+
+**Decision.**
+
+- *Pilot composition.* 800 = 400 settlement runs (4 sides × 2 `kappa` × R=50) + 400 controls (`settlement=False`, no `settlement_side` key, 200 per `kappa`, independent seeds). Rule 2 needs "the no-settlement case at the same p", which is a separate run set, and the spec's verification snippet groups by `geometry_params`, so the controls appear as the `{}` group. Controls at one `kappa` share `p`, so one set serves all four sides. `phi=0`; the Experiment 0b threshold at `phi=-π/2` is the same by the §6.1 rotation symmetry.
+- *Reading of the rule, fixed in code before the pilot ran.* Both rules are read at both `kappa` (a side qualifies only if in band and within 1% at each), because Experiment 1 runs at both. Drift is the relative difference of mean `n_occupied` from the controls at the same `kappa`. This did not affect the outcome (above).
+- *Branch 3 and the value.* The metric for SQ4 becomes `settlement_reached_step`; `settlement_reached` is still recorded, no §5 change. **`SETTLEMENT_SIDE` stays 16.** The rule gives no value in branch 3. 16 is the pre-existing default that every merged spec and test was built on, it passes rule 2, and the pilot shows `P(settlement_reached)` is flat in side, so nothing supports moving. Side 8 also passes rule 2 and is the other defensible choice; this is the judgement for the reviewer. Changing it means editing the constant and rerunning `python run.py --exp 1-coarse` (under a minute) on a fresh results file.
+- *Censoring (for SPEC-13 and SPEC-17).* The step is `null` for runs that never reach the settlement. Those are right-censored, so a mean over reached runs alone is biased toward fast fires, and at `kappa=2` it rests on very few runs. The analysis should report the reach probability and the time-to-reach together, or treat it as a time-to-event outcome. The roadmap's SQ4 wording ("minimises P(settlement reached)") is not edited here (not on the may-touch list).
+- *Coarse Experiment 1.* All 12 condition levels kept (`none` at `b=0` only, 11 treated levels), `b ∈ {0.10, 0.15, 0.20, 0.30}` plus `b=0`, R=20 (of 200), `p_rel ∈ {−0.05, 0, +0.05}` plus absolute `p=0.70`, `kappa ∈ {0, 2}`, `phi=0`, `settlement=True` with `settlement_side=16` written explicitly (DEC-015). 7,200 rows, none truncated, I7 holds over the frame. `b=0.15` is included because Experiments 2 and 3 use it.
+- *Heatmap.* `A` is read as mean `burned_fraction`. Eight panels (`kappa` × density), each with its own colour scale since `A` spans orders of magnitude between densities; the `b=0` column is the untreated run repeated per row. Registered as `exp1-coarse`; the builder reads `exp1_coarse.parquet` only. `import json` was added to `make_figures.py` for it.
+- *Seeds.* Pilot `2,000,000 + position`, coarse `3,000,000 + position × 20 + replicate`, clear of Experiments 0 and 0b and of each other.
+- *`run.py`.* `pilot` and `1-coarse` added between `0b` and `1`, so `--exp all` runs them in dependency order.
+- *Tests.* None added: `tests/` is not on the spec's may-touch list (as DEC-034). The decision rule, grids and frame checks run at run time (`_check_pilot_frame`, `_check_exp1c_frame`); the existing suite passes unchanged.
+- *`code_version`.* Both frames carry `e19a989`, the SPEC-20 head, a real SHA. They were produced from a working tree with uncommitted SPEC-12 changes, so it names the parent of the code that made them (as DEC-034, DEC-035). The model and step function are identical at that SHA.
+
+**Rationale.** The decision rule was fixed before the pilot and was applied as written; branch 3 is the one the spec says to take when the outcome is inconvenient. The remaining items are choices inside the spec's silence.
+
+**Context impact.** `project-context.md` §3.6 (`SETTLEMENT_SIDE` frozen at 16, marker removed) and §10.2 O1 (resolution recorded, SQ4 metric changed to `settlement_reached_step`). Only O4 remains open in §10.
+
+**Commit.** pending
