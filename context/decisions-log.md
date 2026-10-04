@@ -926,6 +926,31 @@ No side lies in [0.3, 0.8] at either `kappa`, so the result does not depend on w
 
 **Commit.** pending
 
+### DEC-038 — SPEC-15: the tail model, its support, the cutoff interval, and the 2b grid
+
+- **Date:** 2026-10-04
+- **Raised by:** Armaan (SPEC-15)
+- **Spec:** SPEC-15
+- **Type:** ambiguity
+- **Status:** resolved — reviewer to confirm
+
+**Situation.** SPEC-15 fixes the method (Clauset–Shalizi–Newman maximum likelihood, `x_min` by KS distance, exponent reported with a cutoff) but not the model's support, which model `x_min` is selected under, how the cutoff's uncertainty is reported, or several details of the 2b grid. It also lists `depends_on: [SPEC-14, SPEC-19]`, and SPEC-14 has not started.
+
+**Decision.**
+
+- **Finite discrete support.** Both models are fitted as discrete distributions on `{x_min, ..., x_max}` with `x_max = L*L`, because a burn size is a count of cells and cannot exceed the lattice. The normalising constant is then a finite sum, the fit is exact maximum likelihood with numpy alone (no Hurwitz zeta, no continuous approximation), and the finite-size bound is in the model rather than misread as a cutoff. `fit_tail` takes `x_max` and `x_min` as optional keyword arguments, additive to the SPEC-15 contract; without `x_max` it uses 100 × the largest observed size.
+- **Cutoff model.** `p(x) ∝ x^(-alpha) · exp(-lambda·x)` with `lambda ≥ 0`, reported as `cutoff = 1/lambda` (`inf` when `lambda = 0`). Both models are exponential families in `(ln x, x)`, so the log-likelihood is concave and a projected Newton method converges from the pure-power-law start.
+- **`x_min` is selected under the cutoff model**, not the pure power law. The reported model is the cutoff model (SPEC-15 Behaviour), and selecting under the pure power law pushes `x_min` up whenever the data are truncated, discarding exactly the tail the cutoff is meant to describe. Candidates are the distinct sizes leaving at least 50 tail points, at most 200 of them, log-spaced.
+- **Cutoff uncertainty is an interval, not a stderr.** On synthetic data the stderr of `lambda` is well calibrated (z-scores sd 0.94–1.01 at n = 4,000–50,000), but a delta-method stderr on `1/lambda` was not (z-score sd ≈ 2 at n = 10,000), because `1/lambda` is strongly skewed whenever `lambda` is poorly determined. `fit_tail` therefore reports `cutoff_lo`, `cutoff_hi` = `1/(lambda ± se)`, with `cutoff_hi = inf` when `lambda − se ≤ 0`, plus `cutoff_rate` and `cutoff_rate_stderr`. 1-sigma coverage of the true cutoff over 40 samples: 0.72.
+- **Cutoff test.** `cutoff_p_value` is the likelihood-ratio test of cutoff against none, using the ½χ²₀ + ½χ²₁ null because `lambda = 0` is on the boundary (Self & Liang 1987). False detections at 5%: 4/40 on untruncated data.
+- **"Recovers a known exponent to within the returned stderr"** is tested as calibration: within 1 stderr in 50–90% of 40 independent samples (measured 0.75), not on one seed, since an honest 1-sigma error bar misses about a third of the time.
+- **2b grid.** Seed of condition `i`, replicate `r` is `9,000,000 + i·50,000 + r`, so a G2 escalation to R = 50,000 contains the 10,000-run set and resumes into the same file. `p_rel = 0.0` on every row: each condition runs at its own measured threshold, which §6.2 and §10.2 O4 name as 2b's reference in place of the governing untreated one. `k*` and `w*` are read from `results/exp2.parquet` at `b = 0.15` and must be unique per family (DEC-012).
+- **Gate G2 reports, it does not act.** `run_exp2b` prints `decades_above_xmin` per condition against the 2-decade threshold. Raising R is a team decision recorded in §10.2 O4, run as `run_exp2b(replicates=50_000, conditions=[...])`. Fits are recorded only for a full run (L = 256 at R = 10,000 for all four conditions, or R = 50,000 for any subset); anything else is staged and records nothing. `tail_fits.parquet` is append-only, keyed by (experiment, condition, geometry_params, b, replicates), so a 50,000-run fit sits beside the 10,000-run one.
+- **Process.** Implemented ahead of SPEC-14, which `depends_on` lists and which has not started. Everything that does not need Experiment 2's data is done and tested; `run.py --exp 2b` raises a clear `FileNotFoundError` until `results/exp2.parquet` exists. The run itself, `results/exp2b.parquet`, `results/tail_fits.parquet`, the G2 outcome and the §10.2 O4 update remain, so SPEC-15 stays `in progress`. Tests live in `tests/test_analysis.py` and a new `tests/test_exp2b.py`, which the spec's verification block uses but its may-touch list omits.
+
+**Context impact.** none yet. §10.2 O4 is updated when the gate is applied.
+
+**Commit.** pending
 ### DEC-039 — SPEC-13: ownership, the Experiment 2 selection rule recorded before the run, and the illustrative scars
 
 - **Date:** 2026-10-04
@@ -1052,5 +1077,3 @@ Measured, b = 0.15, kappa = 0, R = 500, untreated reference 0.4769 (Experiment 0
 **Flag for the reviewer.** This is a judgement call made while implementing, not a decision we took together: the alternative is (B), and switching to it is a one-line change in SPEC-15's grid builder plus a row in `pc_estimates.parquet`.
 
 **Context impact.** `project-context.md` §6.2's Experiment 2b line names four conditions; it now runs three. Left to SPEC-15's PR, which owns that experiment.
-
-**Commit.** pending

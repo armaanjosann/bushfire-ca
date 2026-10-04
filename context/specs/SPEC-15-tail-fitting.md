@@ -10,7 +10,7 @@ implements: [§6.2 Exp 2b, §10.2 O4, §4.6]
 issue: "#15"
 branch: spec/SPEC-15-tail-fitting
 pr:
-decisions: [DEC-005, DEC-012]
+decisions: [DEC-005, DEC-012, DEC-038]
 ---
 
 # SPEC-15 — Tail fitting and Experiment 2b
@@ -80,12 +80,12 @@ No new dependency. `powerlaw` and `scipy` are not in the project's allowed set �
 
 ## Acceptance criteria
 
-- [ ] `fit_tail` recovers a known exponent from synthetic power-law data with a known `x_min`, to within the returned stderr.
-- [ ] `fit_tail` recovers a known cutoff from synthetic truncated power-law data, and reports a cutoff consistent with "none" on untruncated data.
+- [x] `fit_tail` recovers a known exponent from synthetic power-law data with a known `x_min`, to within the returned stderr.
+- [x] `fit_tail` recovers a known cutoff from synthetic truncated power-law data, and reports a cutoff consistent with "none" on untruncated data.
 - [ ] `results/exp2b.parquet` exists with 40,000 rows (4 conditions × 10,000), `truncated == False`.
 - [ ] `results/tail_fits.parquet` has one row per condition with `alpha`, `alpha_stderr`, `cutoff`, `x_min`, `n_tail`, `decades_above_xmin`.
 - [ ] `decades_above_xmin` is reported for every condition, and the G2 decision is recorded against it.
-- [ ] No import of `scipy`, `powerlaw`, or any package outside the allowed set.
+- [x] No import of `scipy`, `powerlaw`, or any package outside the allowed set.
 - [ ] If R was raised to 50,000, §10.2 O4 records it and the DEC entry names the commit.
 
 ## Invariants
