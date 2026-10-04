@@ -52,7 +52,7 @@ Anything `blocked`, with the open DEC entry behind it. First item at the next sy
 
 | Spec | Blocked since | DEC | Waiting on |
 |---|---|---|---|
-| SPEC-14 | 2026-10-04 | DEC-041 | `strips_perp` threshold falls with L (0.753 / 0.716 / 0.672 at L = 128 / 256 / 512), so there is no FSS crossing. Decide option A, B or C. |
+| SPEC-14 | 2026-10-04 | DEC-041 | `strips_perp` threshold falls with L (0.753 / 0.716 / 0.672 / ~0.628 at L = 128 / 256 / 512 / 1024), so there is no FSS crossing. Decide option A or B (C ruled out by the L = 1024 probe). |
 
 ## Phase summary
 
