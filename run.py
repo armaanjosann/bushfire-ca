@@ -6,6 +6,7 @@ from src import experiments
 
 EXPERIMENTS = {
     "0": experiments.run_exp0,
+    "0b": experiments.run_exp0b,
     "1": experiments.run_exp1,
     "2": experiments.run_exp2,
     "2b": experiments.run_exp2b,
