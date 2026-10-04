@@ -491,3 +491,304 @@ def resolve_p(p_rel: float, *, regime: str, condition: str, b: float, kappa: flo
     if not 0.0 <= p <= 1.0:
         raise ValueError(f"p_c + p_rel = {p} is not a probability, for {wanted}")
     return p
+
+
+# ===========================================================================
+# Burn-size tail fitting (SPEC-15, §10.2 O4)
+# ===========================================================================
+#
+# Model. A fire's size x (burned cells) is a positive integer that cannot
+# exceed the lattice, so the tail is fitted as a *discrete* distribution on the
+# finite support {x_min, ..., x_max}:
+#
+#     power law (PL):            p(x) ∝ x^(-alpha)
+#     with cutoff (TPL):         p(x) ∝ x^(-alpha) · exp(-x / cutoff)
+#
+# Because the support is finite, the normalising constant is an ordinary finite
+# sum and the maximum-likelihood fit is exact in numpy, with no zeta function
+# and no scipy (DEC-038). Both models are exponential families in the
+# sufficient statistics (ln x, x), so the log-likelihood is concave and Newton's
+# method converges from any start.
+#
+# Procedure (Clauset, Shalizi & Newman 2009, with the cutoff model in the
+# selection step, DEC-038):
+#   1. for each candidate x_min, fit TPL by maximum likelihood (cutoff >= 0
+#      enforced through lambda = 1/cutoff >= 0);
+#   2. keep the x_min whose fitted model is closest to the data in KS distance;
+#   3. at that x_min, report alpha and the cutoff together, plus the pure-PL fit
+#      and a likelihood-ratio test of "cutoff" against "no cutoff".
+
+TAIL_FITS_PATH = "results/tail_fits.parquet"
+TAIL_MIN_N = 50              # fewest tail points a candidate x_min may leave
+TAIL_MAX_CANDIDATES = 200    # x_min candidates tried (log-spaced if more exist)
+G2_MIN_DECADES = 2.0         # §10.2 O4 gate: decades of tail above x_min
+_NEWTON_TOL = 1e-10
+_NEWTON_MAX_ITER = 100
+
+TAIL_FIT_FIELDS = [
+    "x_min", "x_max", "n", "n_tail", "max_size", "decades_above_xmin",
+    "alpha", "alpha_stderr", "cutoff", "cutoff_lo", "cutoff_hi",
+    "cutoff_rate", "cutoff_rate_stderr",
+    "alpha_pl", "alpha_pl_stderr", "cutoff_llr", "cutoff_p_value", "ks_distance",
+]
+TAIL_KEY = ["experiment", "condition", "geometry_params", "b", "replicates"]
+TAIL_COLUMNS = TAIL_KEY + ["p", "kappa", "L"] + TAIL_FIT_FIELDS
+
+
+@dataclass(frozen=True)
+class _Support:
+    """The finite support {x_min .. x_max} and its sufficient statistics."""
+    x: np.ndarray       # float64 values
+    logx: np.ndarray
+
+
+def _support(x_min: int, x_max: int) -> _Support:
+    x = np.arange(x_min, x_max + 1, dtype=np.float64)
+    return _Support(x, np.log(x))
+
+
+def _moments(sup: _Support, alpha: float, lam: float) -> tuple[float, np.ndarray, np.ndarray, np.ndarray]:
+    """log Z, mean of (ln x, x), covariance of (ln x, x), and the pmf, under
+    p(x) ∝ exp(-alpha ln x - lam x) on the support. Shifted by the max exponent
+    so nothing overflows."""
+    e = -alpha * sup.logx - lam * sup.x
+    m = float(e.max())
+    w = np.exp(e - m)
+    z = float(w.sum())
+    pmf = w / z
+    stats = np.stack([sup.logx, sup.x])                 # (2, K)
+    mean = stats @ pmf
+    centred = stats - mean[:, None]
+    cov = (centred * pmf) @ centred.T
+    return m + math.log(z), mean, cov, pmf
+
+
+def _loglik(sup, alpha, lam, n, s_log, s_x) -> float:
+    log_z = _moments(sup, alpha, lam)[0]
+    return -alpha * s_log - lam * s_x - n * log_z
+
+
+def _fit_pl(sup: _Support, n: int, s_log: float) -> tuple[float, float, float]:
+    """Pure power law: (alpha, stderr, log-likelihood). 1-D Newton, concave."""
+    x_min = sup.x[0]
+    # continuous-approximation start (CSN eq. 3.7); exact fit refines it
+    alpha = 1.0 + n / max(s_log - n * math.log(x_min - 0.5), 1e-12)
+    ll = _loglik(sup, alpha, 0.0, n, s_log, 0.0)
+    for _ in range(_NEWTON_MAX_ITER):
+        _, mean, cov, _ = _moments(sup, alpha, 0.0)
+        grad = n * mean[0] - s_log
+        hess = -n * cov[0, 0]
+        step = -grad / hess
+        t = 1.0
+        while True:                                     # backtracking: never go downhill
+            new = alpha + t * step
+            new_ll = _loglik(sup, new, 0.0, n, s_log, 0.0)
+            if new_ll >= ll - 1e-12 or t < 1e-8:
+                break
+            t *= 0.5
+        alpha, ll = new, new_ll
+        if abs(t * step) < _NEWTON_TOL * max(1.0, abs(alpha)):
+            break
+    var = _moments(sup, alpha, 0.0)[2][0, 0]
+    return alpha, 1.0 / math.sqrt(n * var), ll
+
+
+def _fit_tpl(sup: _Support, n: int, s_log: float, s_x: float,
+             alpha0: float, ll0: float) -> tuple[float, float, np.ndarray, float]:
+    """Power law with cutoff: (alpha, lam, covariance of (alpha, lam), log-lik).
+
+    Projected Newton on the concave log-likelihood with lam >= 0. If the
+    optimum is on the boundary lam = 0 the model is the pure power law, and the
+    covariance returned is the 1-D one with lam's variance set to inf.
+    """
+    theta = np.array([alpha0, 0.0])
+    ll = ll0
+    for _ in range(_NEWTON_MAX_ITER):
+        _, mean, cov, _ = _moments(sup, theta[0], theta[1])
+        grad = np.array([n * mean[0] - s_log, n * mean[1] - s_x])
+        if theta[1] == 0.0 and grad[1] <= 0.0:
+            # at the boundary and the likelihood wants lam < 0: only alpha moves
+            step = np.array([grad[0] / (n * cov[0, 0]), 0.0])
+        else:
+            try:
+                step = np.linalg.solve(n * cov, grad)   # -H^{-1} g, with H = -n cov
+            except np.linalg.LinAlgError:
+                step = grad / np.maximum(n * np.diag(cov), 1e-300)
+        t = 1.0
+        while True:
+            new = theta + t * step
+            new[1] = max(new[1], 0.0)                   # project onto lam >= 0
+            new_ll = _loglik(sup, new[0], new[1], n, s_log, s_x)
+            if new_ll >= ll - 1e-12 or t < 1e-8:
+                break
+            t *= 0.5
+        moved = new - theta
+        theta, ll = new, new_ll
+        if abs(moved[0]) < _NEWTON_TOL * max(1.0, abs(theta[0])) and abs(moved[1]) <= _NEWTON_TOL * max(theta[1], 1e-12):
+            break
+
+    _, _, cov, _ = _moments(sup, theta[0], theta[1])
+    if theta[1] == 0.0:
+        out = np.array([[1.0 / (n * cov[0, 0]), 0.0], [0.0, math.inf]])
+    else:
+        out = np.linalg.inv(n * cov)
+    return float(theta[0]), float(theta[1]), out, ll
+
+
+def _ks(tail_sorted: np.ndarray, pmf: np.ndarray, x_min: int) -> float:
+    """KS distance between the tail's empirical CDF and the model CDF, at the
+    distinct observed values (both CDFs are step functions on the integers)."""
+    cdf = np.cumsum(pmf)
+    vals, counts = np.unique(tail_sorted, return_counts=True)
+    emp = np.cumsum(counts) / tail_sorted.size
+    model = cdf[(vals - x_min).astype(np.int64)]
+    return float(np.max(np.abs(emp - model)))
+
+
+def _candidates(sizes_sorted: np.ndarray) -> np.ndarray:
+    """Distinct values that leave at least TAIL_MIN_N points at or above them,
+    thinned to at most TAIL_MAX_CANDIDATES, log-spaced, keeping the smallest."""
+    vals = np.unique(sizes_sorted)
+    n_at_or_above = sizes_sorted.size - np.searchsorted(sizes_sorted, vals, side="left")
+    vals = vals[n_at_or_above >= TAIL_MIN_N]
+    if vals.size > TAIL_MAX_CANDIDATES:
+        idx = np.unique(np.round(np.geomspace(1, vals.size, TAIL_MAX_CANDIDATES)).astype(int) - 1)
+        vals = vals[idx]
+    return vals
+
+
+def _fit_at(sizes_sorted: np.ndarray, x_min: int, x_max: int) -> dict:
+    tail = sizes_sorted[np.searchsorted(sizes_sorted, x_min, side="left"):]
+    n = int(tail.size)
+    sup = _support(x_min, x_max)
+    s_log = float(np.log(tail).sum())
+    s_x = float(tail.sum())
+    alpha_pl, alpha_pl_se, ll_pl = _fit_pl(sup, n, s_log)
+    alpha, lam, cov, ll = _fit_tpl(sup, n, s_log, s_x, alpha_pl, ll_pl)
+    pmf = _moments(sup, alpha, lam)[3]
+    llr = max(2.0 * (ll - ll_pl), 0.0)
+    # The cutoff is reported as 1/lam with a 1-sigma interval from inverting
+    # lam ± se(lam). se(lam) is well calibrated; a delta-method se on 1/lam is
+    # not, because 1/lam is strongly skewed whenever lam is poorly determined
+    # (DEC-038). The upper end is inf when lam - se <= 0: the data cannot rule
+    # out "no cutoff" at 1 sigma.
+    lam_se = math.sqrt(cov[1, 1])
+    cutoff = 1.0 / lam if lam > 0.0 else math.inf
+    cutoff_lo = 1.0 / (lam + lam_se) if math.isfinite(lam_se) else 0.0
+    cutoff_hi = 1.0 / (lam - lam_se) if lam - lam_se > 0.0 else math.inf
+    return {
+        "x_min": int(x_min), "x_max": int(x_max), "n_tail": n,
+        "max_size": int(tail[-1]),
+        "decades_above_xmin": float(math.log10(tail[-1] / x_min)),
+        "alpha": float(alpha), "alpha_stderr": float(math.sqrt(cov[0, 0])),
+        "cutoff": float(cutoff), "cutoff_lo": float(cutoff_lo), "cutoff_hi": float(cutoff_hi),
+        "cutoff_rate": float(lam), "cutoff_rate_stderr": float(lam_se),
+        "alpha_pl": float(alpha_pl), "alpha_pl_stderr": float(alpha_pl_se),
+        "cutoff_llr": float(llr),
+        # lam = 0 is on the boundary of the parameter space, so the null
+        # distribution of the LR statistic is ½χ²₀ + ½χ²₁ (Self & Liang 1987)
+        "cutoff_p_value": 0.5 * math.erfc(math.sqrt(llr / 2.0)) if llr > 0 else 1.0,
+        "ks_distance": _ks(tail, pmf, x_min),
+    }
+
+
+def fit_tail(sizes: np.ndarray, *, x_max: int | None = None, x_min: int | None = None) -> dict:
+    """Fit the upper tail of a burn-size sample (SPEC-15 interface contract).
+
+    `sizes` are burned-cell counts, one per run. Non-positive sizes (a run with
+    no fuel at all) are dropped. `x_max` is the largest size the system can
+    produce — the lattice, `L*L`, for a burn size — and bounds the support of
+    both models (DEC-038). If omitted it defaults to 100 × the largest observed
+    size, a stand-in for "unbounded" whose effect on the fit is negligible for
+    alpha > 1. `x_min` fixes the start of the tail; by default it is chosen by
+    KS distance over the candidates.
+
+    Returns a dict with the TAIL_FIT_FIELDS: `alpha` and `cutoff` are the
+    reported fit (power law with exponential cutoff; `cutoff = inf` when the
+    data give no evidence of one), `cutoff_lo`/`cutoff_hi` its 1-sigma
+    interval, `cutoff_rate` = 1/cutoff with its stderr, `alpha_pl` the pure
+    power law at the same
+    `x_min`, `cutoff_p_value` the likelihood-ratio test of cutoff against none,
+    and `decades_above_xmin = log10(max_size / x_min)` for the §10.2 O4 gate.
+    """
+    s = np.asarray(sizes)
+    if s.ndim != 1:
+        raise ValueError(f"sizes must be 1-D, got shape {s.shape}")
+    if not np.issubdtype(s.dtype, np.number) or not np.all(np.isfinite(s)):
+        raise ValueError("sizes must be finite numbers")
+    if np.any(s != np.round(s)):
+        raise ValueError("sizes must be integer counts (burned cells)")
+    s = np.sort(s[s > 0].astype(np.int64))
+    if s.size < TAIL_MIN_N:
+        raise ValueError(f"need at least {TAIL_MIN_N} positive sizes to fit a tail, got {s.size}")
+    if x_max is None:
+        x_max = int(100 * s[-1])
+    if x_max < s[-1]:
+        raise ValueError(f"x_max={x_max} is below the largest observed size {int(s[-1])}")
+
+    if x_min is not None:
+        if x_min < 1 or (s >= x_min).sum() < TAIL_MIN_N:
+            raise ValueError(f"x_min={x_min} leaves fewer than {TAIL_MIN_N} tail points")
+        best = _fit_at(s, int(x_min), int(x_max))
+    else:
+        best = None
+        for cand in _candidates(s):
+            fit = _fit_at(s, int(cand), int(x_max))
+            if best is None or fit["ks_distance"] < best["ks_distance"]:
+                best = fit
+    best["n"] = int(s.size)
+    return {k: best[k] for k in TAIL_FIT_FIELDS}
+
+
+def g2_gate(fits: pd.DataFrame) -> pd.DataFrame:
+    """§10.2 O4 gate G2: which conditions keep at least G2_MIN_DECADES of tail
+    above x_min. Returns condition, decades_above_xmin and a `passes` column.
+    Raising R to 50,000 is a decision for the team, recorded in §10.2 O4; this
+    only reports the evidence."""
+    out = fits[["condition", "geometry_params", "replicates", "x_min", "max_size",
+                "decades_above_xmin"]].copy()
+    out["passes"] = out["decades_above_xmin"] >= G2_MIN_DECADES
+    return out
+
+
+_TAIL_DTYPES = {
+    "experiment": "string", "condition": "string", "geometry_params": "string",
+    "b": "float64", "replicates": "int64", "p": "float64", "kappa": "float64", "L": "int64",
+    "x_min": "int64", "x_max": "int64", "n": "int64", "n_tail": "int64", "max_size": "int64",
+}
+
+
+def write_tail_fits(rows, path: str = TAIL_FITS_PATH) -> None:
+    """Append fit rows (dicts or a DataFrame with TAIL_COLUMNS) to `path`.
+
+    Append-only like `write_pc_estimates` (workflow-rules.md §9): existing rows
+    are carried over unchanged, the file is replaced atomically, and a row whose
+    (experiment, condition, geometry_params, b, replicates) is already recorded
+    raises with nothing written. A rerun at R = 50,000 after the G2 gate is a
+    new key, so both fits stay in the record.
+    """
+    new = rows.copy() if isinstance(rows, pd.DataFrame) else pd.DataFrame(list(rows))
+    missing = [c for c in TAIL_COLUMNS if c not in new.columns]
+    if missing:
+        raise ValueError(f"tail-fit rows are missing columns {missing}")
+    new = new[TAIL_COLUMNS]
+    for col, dtype in _TAIL_DTYPES.items():
+        new[col] = new[col].astype(dtype)
+    for col in TAIL_COLUMNS:
+        if col not in _TAIL_DTYPES:
+            new[col] = new[col].astype("float64")
+
+    path = Path(path)
+    old = pd.read_parquet(path) if path.exists() else None
+    key = lambda df: list(df[TAIL_KEY].itertuples(index=False, name=None))
+    seen = set(key(old)) if old is not None else set()
+    for k in key(new):
+        if k in seen:
+            raise ValueError(f"duplicate tail-fit row for {dict(zip(TAIL_KEY, k))}; nothing written")
+        seen.add(k)
+
+    out = new if old is None else pd.concat([old, new], ignore_index=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    out.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
