@@ -672,3 +672,88 @@ Small decisions from the same spec, recorded together.
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-029 — SPEC-05 has no channel for the `p_rel` column
+
+- **Date:** 2026-09-27
+- **Raised by:** Aaron on SPEC-05
+- **Spec:** SPEC-05 (affects SPEC-06, SPEC-12, SPEC-13, SPEC-14, SPEC-16)
+- **Type:** ambiguity
+- **Status:** superseded by DEC-030
+
+**Situation.** §5 requires a `p_rel` column (float64 | null): the offset from the governing `p_c` where a config was specified that way, null where `p` was absolute. SPEC-05 assembles each row from `Config` + `RunResult` and defines `run_configs(cfgs: list[Config], out_path, resume=True)`. Neither input carries `p_rel`: `Config` (§4.1) has no such field, `RunResult` is "§5 minus the config echo" and has none, and SPEC-06's `resolve_p` returns only the absolute `p`. SPEC-13 says "the resolved absolute value goes in `p`, the offset in `p_rel`", and SPEC-12, 14 and 16 all say "no new interface, uses `run_configs`", so no downstream spec supplies the value either. As written, the harness can only emit `p_rel` as all-null. Every threshold-relative experiment (Exp 1, 3, 2b's inputs, the §10.2 O1 pilot) would then write rows whose `p_rel` is wrong, and parquets are append-only (§9), so it cannot be patched afterwards.
+
+**Decision.** none yet — needs a call from Aaron and/or Armaan. Options:
+
+1. **Optional keyword argument on `run_configs`** (recommended): `p_rel: Sequence[float | None] | None = None`, parallel to `cfgs`, default all-null. Backward compatible with every spec written against the current signature; `p_rel` stays out of `run_id` (it is a pure function of `p` and the governing `p_c`, i.e. a label). Changes SPEC-05's own interface only, not §4 or §5. Then SPEC-06, 12, 13, 14 and 16 each need their "no new interface" line amended to say they pass it, and SPEC-05's Interface contract is amended.
+2. **Add `p_rel` to `Config`.** Changes §4.1, so `project-context.md` and `src/model.py` (outside SPEC-05's may-touch list) change in the same PR; a separate spec or a widened may-touch list is needed.
+3. **Carry it in `geometry_params`.** Rejected: it pollutes a column and the generators' input with metadata that is not geometry.
+4. **Always null, derive at analysis time from `p` and `pc_estimates.parquet`.** Contradicts §5 as the row contract.
+
+**Also confirm (not blocking, will be implemented as stated unless told otherwise).**
+
+- *Chunking.* "Chunk by config, not by replicate" is read as: a task is a run of consecutive `Config`s in input order (replicates of one parameter point are adjacent, so they land together in the file), sized `min(20, ceil(n / (4 * workers)))`, dispatched with ordered `imap`. Rows are flushed to the parquet atomically (temp file, then `os.replace`) after each completed chunk group, so a partial run always holds whole chunks and resumes by `run_id`. Strict one-task-per-parameter-point would leave most of 16 cores idle for Exp 2b (4 points at R = 10,000), breaking §6.3's ~35 minutes.
+- *`code_version`.* Plain `git rev-parse --short HEAD`, obtained once in the parent before any compute and validated as hex; the runner raises if it cannot. It does not append `-dirty` for an uncommitted tree, because that would stop it being "a real short SHA" for SPEC-18's audit. Committing results from a dirty tree is therefore a human check.
+- *`run.py`.* Nothing in SPEC-05 is dispatched by `--exp`; the experiment bodies belong to SPEC-07 and 12 to 16, so `run.py` is left untouched.
+
+**Rationale.** Option 1 is the smallest change that makes §5 satisfiable and leaves both contracts (§4, §5) intact.
+
+**Context impact.** none (option 1). Option 2 would change §4.1.
+
+**Commit.** pending
+
+### DEC-030 — SPEC-05: `p_rel` channel, chunking, and what was measured
+
+- **Date:** 2026-09-27
+- **Raised by:** Aaron on SPEC-05
+- **Spec:** SPEC-05 (affects SPEC-06, SPEC-12, SPEC-13, SPEC-14, SPEC-16)
+- **Type:** ambiguity
+- **Status:** resolved
+
+**Situation.** DEC-029: the harness had no channel for the §5 `p_rel` column.
+
+**Decision.** Option 1 of DEC-029, as chosen by Aaron. `run_configs(cfgs, out_path, resume=True, *, p_rel=None)`; `p_rel` is a sequence parallel to `cfgs` (same length, else `ValueError`), default all-null, written to the `p_rel` column and **not** part of `run_id`. It stays paired with its config across resume. SPEC-05's Interface contract is amended in the spec file. No §4 signature and no §5 column changes.
+
+**Follow-ups (not done here, because a spec may not edit another spec).** SPEC-06, 12, 13, 14 and 16 say "no new interface, uses `run_configs`". Each of the callers that resolves `p_rel` must now pass it: SPEC-12 (pilot), SPEC-13 (Exp 1), SPEC-14 (Exp 2), SPEC-16 (Exp 3; Exp 4 passes nothing, `p_rel` null by design). Their spec text should say so.
+
+**Other choices made in implementation, as flagged in DEC-029.**
+
+- *Chunking.* A task is a run of consecutive configs in input order, `min(20, ceil(n / (4 * workers)))` long, dispatched with ordered `imap`, so the file order equals the input order and replicates of one parameter point land together. Rows are checkpointed with a temp-file-then-`os.replace` write every 30 s and on any exit (including an exception or Ctrl-C), so an interrupted run always leaves a complete parquet made of whole chunks. Resume matches on `run_id`, so it is correct at any granularity.
+- *Append-only.* Resuming rewrites the file atomically with the existing rows carried over unchanged (tested to be identical, `wall_ms` included). `resume=False` on an existing file raises `FileExistsError` instead of overwriting. Duplicate configs in one call raise `ValueError`.
+- *`code_version`.* `git rev-parse --short HEAD`, taken once before any compute, validated as hex; the runner raises and writes nothing if it fails. No `-dirty` suffix, so committing results made from an uncommitted tree remains a human check (SPEC-18).
+- *`run_id`.* First 16 hex chars of SHA-256 over canonical JSON of every `Config` field. Float fields are coerced to float and int fields to int, so `p=1` and `p=1.0`, numpy scalars and `-0.0` hash the same. `max_steps=None` and `max_steps=8*L` are different runs by design.
+- *I7 over the results frame (DEC-023).* DEC-023 said to add it as a second assertion in `test_invariants.py::test_i7_budget_parity`. That file is not in SPEC-05's may-touch list, so the frame check is `tests/test_experiments.py::test_frame_i7_budget_parity`, which also checks I9 over the frame. Deviation from DEC-023's placement only.
+- *`run.py`.* Untouched: nothing in SPEC-05 is dispatched by `--exp`.
+
+**Acceptance criterion not met on this hardware: "16 workers, 200 configs, at least 8x faster than serial".**
+Measured on the development machine (8 physical cores, 16 logical, Windows spawn), 200 `PERCOLATION` edge-ignition configs at `L=256`:
+
+| | serial | 16 workers | speed-up |
+|---|---|---|---|
+| harness | 23.8 s | 4.05 s | 5.9x |
+| bare `Pool.map`, no harness code | 24.0 s | 4.00 s | 6.0x |
+| harness, 800 configs | ~96 s | 12.8 s | 7.5x |
+
+The harness is indistinguishable from a raw `Pool.map`, and the speed-up rises with job size as the ~1 s process-spawn cost amortises, so the limit is 8 physical cores plus start-up, not the harness. `tests/test_experiments.py::test_16_workers_at_least_8x_faster_than_serial` states the criterion verbatim but is opt-in (`SPEC05_SPEEDUP=1`) and fails here at 5.9x. It should be run on a machine with 16 physical cores, or the criterion restated. A default test (`test_parallel_is_faster_and_identical_to_serial`) checks parallel is at least 2x faster and produces identical rows. This matters little for the compute budget: Experiment 0b/2 are overnight runs whose cost is dominated by the `L=512` runs, where start-up is negligible.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-031 — SPEC-05 speed-up criterion reworded
+
+- **Date:** 2026-09-27
+- **Raised by:** Aaron (on SPEC-05)
+- **Spec:** SPEC-05
+- **Type:** deviation
+- **Status:** resolved
+
+**Situation.** SPEC-05 required "16 workers, 200 configs, at least 8x faster than serial". DEC-030 measured 5.9x on an 8-physical-core / 16-thread machine, with the harness matching a bare `Pool.map` (4.01 s vs 4.00 s) and the speed-up rising with job size (7.5x at 800 configs). The criterion is bounded by physical cores and Windows process-spawn cost, not by the harness, so it cannot pass on 8-core hardware and says nothing about correctness.
+
+**Decision.** Reworded by Aaron: on at least 4 cores, a parallel run of 200 configs is at least 2x faster than serial and returns identical rows in the same order. This is what `test_parallel_is_faster_and_identical_to_serial` checks. The opt-in `test_16_workers_at_least_8x_faster_than_serial` and its `SPEC05_SPEEDUP` switch are removed; the measurements stay in DEC-030 as the record. This supersedes the part of DEC-030 that describes that opt-in test and the unmet criterion.
+
+**Rationale.** The property that matters is that parallelism works and does not change results; row identity is checked directly. Overnight run time is a scheduling concern, not a correctness one.
+
+**Context impact.** none
+
+**Commit.** pending
