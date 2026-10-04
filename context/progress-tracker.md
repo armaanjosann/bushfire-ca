@@ -38,7 +38,7 @@ Full definitions in `workflow-rules.md` §4.
 | SPEC-12 | Settlement pilot, coarse Exp 1, freeze | Aaron | P4 — Parameter freeze | `done` | SPEC-05, SPEC-06, SPEC-10, SPEC-11, SPEC-19 | #37 | DEC-003, DEC-007, DEC-011, DEC-015, DEC-037 |
 | SPEC-13 | Experiment 1: geometry × budget | Armaan | P5 — Full experiments | `in review` | SPEC-12 |  | DEC-003, DEC-009, DEC-011, DEC-013, DEC-015, DEC-039 |
 | SPEC-14 | Experiment 2: threshold shift | Armaan | P5 — Full experiments | `in review` | SPEC-06, SPEC-13, SPEC-19 |  | DEC-003, DEC-004, DEC-005, DEC-011, DEC-012, DEC-040, DEC-041 |
-| SPEC-15 | Tail fitting, Experiment 2b | Armaan | P5 — Full experiments | `not started` | SPEC-14, SPEC-19 |  | DEC-005, DEC-012 |
+| SPEC-15 | Tail fitting, Experiment 2b | Armaan | P5 — Full experiments | `in progress` | SPEC-14, SPEC-19 |  | DEC-005, DEC-012 |
 | SPEC-16 | Experiments 3 and 4, frame invariance | Aaron | P5 — Full experiments | `not started` | SPEC-13 |  | DEC-003, DEC-008, DEC-011, DEC-015 |
 | SPEC-17 | Results figures | Armaan | P6 — Delivery | `not started` | SPEC-13, SPEC-14, SPEC-15, SPEC-16 |  | DEC-009, DEC-010, DEC-013, DEC-016, DEC-017 |
 | SPEC-18 | Reproducibility gate | Aaron | P6 — Delivery | `not started` | SPEC-08, SPEC-17, SPEC-20, SPEC-21 |  | DEC-016, DEC-017 |

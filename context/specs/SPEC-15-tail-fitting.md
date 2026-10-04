@@ -1,13 +1,13 @@
 ---
 id: SPEC-15
 title: Tail fitting and Experiment 2b
-status: not started
+status: in progress
 owner: Armaan
 reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
 depends_on: [SPEC-14, SPEC-19]
 implements: [§6.2 Exp 2b, §10.2 O4, §4.6]
-issue:
+issue: "#15"
 branch: spec/SPEC-15-tail-fitting
 pr:
 decisions: [DEC-005, DEC-012]
