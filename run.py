@@ -1,4 +1,4 @@
-"""Single entry point: python run.py --exp 0|1|2|2b|3|4|all (project-context.md §4.7)."""
+"""Single entry point: python run.py --exp 0|0b|pilot|1-coarse|1|2|2b|3|4|all (project-context.md §4.7)."""
 
 import argparse
 
@@ -7,6 +7,8 @@ from src import experiments
 EXPERIMENTS = {
     "0": experiments.run_exp0,
     "0b": experiments.run_exp0b,
+    "pilot": experiments.run_pilot,
+    "1-coarse": experiments.run_exp1_coarse,
     "1": experiments.run_exp1,
     "2": experiments.run_exp2,
     "2b": experiments.run_exp2b,

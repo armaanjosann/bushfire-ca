@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import json
 import os
 from pathlib import Path
 from typing import Callable
@@ -228,6 +229,107 @@ def validation() -> Figure:
     fig.legend(handles, labels, loc="outside lower center", ncol=5, columnspacing=1.6, handlelength=2.2)
     fig.suptitle("Experiment 0: site-percolation validation  (PERCOLATION regime; "
                  "not comparable with any STUDY threshold)", fontsize=11, color=INK_SECONDARY)
+    return fig
+
+
+# --- coarse Experiment 1 heatmap (SPEC-12) ----------------------------------
+EXP1_COARSE_PATH = "exp1_coarse.parquet"
+# Row order: random, then the clustering-scale continuum (§4.2), then the targeted buffer.
+COARSE_LEVELS = (
+    [("random", None)]
+    + [("patches", k) for k in (4, 8, 16)]
+    + [("strips_perp", w) for w in (4, 8, 16)]
+    + [("strips_para", w) for w in (4, 8, 16)]
+    + [("buffer", None)]
+)
+COARSE_PANELS = [(kappa, rel) for kappa in (0.0, 2.0) for rel in (-0.05, 0.0, 0.05, None)]
+COARSE_CMAP = mpl.colors.LinearSegmentedColormap.from_list("burn", [SURFACE, "#2a78d6", "#0a2a52"])
+
+
+def _coarse_level(condition: str, geometry_params: str):
+    """(condition, k or w) from a row; `settlement_side` is not part of the level."""
+    prm = json.loads(geometry_params)
+    return condition, prm.get("k", prm.get("w"))
+
+
+def _coarse_label(level) -> str:
+    condition, scale = level
+    return condition if scale is None else f"{condition} {'k' if condition == 'patches' else 'w'}={scale}"
+
+
+def _coarse_frame() -> pd.DataFrame:
+    df = _read(EXP1_COARSE_PATH, "run `python run.py --exp 1-coarse`",
+               ["regime", "settlement", "condition", "geometry_params", "b", "kappa", "p", "p_rel",
+                "burned_fraction", "truncated"])
+    if not (df["regime"] == "STUDY").all() or not df["settlement"].all():
+        raise ValueError(f"{EXP1_COARSE_PATH} holds non-STUDY or no-settlement rows")
+    if df["truncated"].any():
+        raise ValueError(f"{EXP1_COARSE_PATH} has truncated runs (I10)")
+    df = df.assign(level=[_coarse_label(_coarse_level(c, g))
+                          for c, g in zip(df["condition"], df["geometry_params"])])
+    untreated = df[(df["condition"] == "none") & (df["b"] == 0.0)]
+    if untreated.empty:
+        raise ValueError(f"{EXP1_COARSE_PATH} has no untreated (`none`, b=0) rows")
+    return df
+
+
+@figure(
+    "exp1-coarse",
+    caption=(
+        "Coarse Experiment 1: a first look at where treatment geometry and budget matter, not a "
+        "result. Mean burned fraction A of the lattice (burned cells / lattice cells) for each "
+        "treatment geometry (rows) and budget b (columns), for a fire from one random fuel cell "
+        "on a lattice with a settlement. Panels are wind strength kappa (rows of panels) by fuel "
+        "density: 0.05 below, at and 0.05 above the untreated threshold p_c of that kappa "
+        "(Experiment 0b), and the absolute p = 0.70. The b = 0 column is the untreated run, "
+        "repeated for every geometry. Each panel has its own colour scale, because A differs by "
+        "orders of magnitude between densities. Replicates are reduced, so cell-to-cell "
+        "differences are indicative only; the full grid is Experiment 1."
+    ),
+)
+def exp1_coarse() -> Figure:
+    df = _coarse_frame()
+    budgets = sorted(df["b"].unique())
+    levels = [_coarse_label(lv) for lv in COARSE_LEVELS]
+
+    fig = Figure(figsize=(17.5, 10.5), layout="constrained")
+    axes = fig.subplots(2, 4)
+    for ax, (kappa, rel) in zip(axes.ravel(), COARSE_PANELS):
+        sel = df["kappa"] == kappa
+        sel &= df["p_rel"].isna() if rel is None else np.isclose(df["p_rel"].fillna(np.inf), rel)
+        sub = df[sel]
+        if sub.empty:
+            raise ValueError(f"{EXP1_COARSE_PATH} has no rows for kappa={kappa}, p_rel={rel}")
+        mean = sub.groupby(["level", "b"])["burned_fraction"].mean()
+        base = float(sub[sub["condition"] == "none"]["burned_fraction"].mean())
+        grid = np.array([[base if b == 0.0 else mean.get((lv, b), np.nan) for b in budgets]
+                         for lv in levels])
+        if np.isnan(grid).any():
+            raise ValueError(f"{EXP1_COARSE_PATH} is missing cells for kappa={kappa}, p_rel={rel}")
+
+        im = ax.imshow(grid, cmap=COARSE_CMAP, vmin=0.0, vmax=float(grid.max()) or 1.0, aspect="auto")
+        for i in range(grid.shape[0]):
+            for j in range(grid.shape[1]):
+                v = grid[i, j]
+                ax.text(j, i, f"{v:.3f}" if v < 0.1 else f"{v:.2f}", ha="center", va="center",
+                        fontsize=7.5, color="white" if v > 0.55 * grid.max() else INK)
+        ax.set_xticks(range(len(budgets)), [f"{b:g}" for b in budgets])
+        ax.set_yticks(range(len(levels)), levels)
+        ax.tick_params(length=0)
+        ax.grid(False)
+        for side in ax.spines.values():
+            side.set_visible(False)
+        ax.set_xlabel("budget b")
+        where = "p = 0.70" if rel is None else f"p_c {rel:+.2f}"
+        ax.set_title(f"kappa = {kappa:g}, {where}  (p = {sub['p'].iloc[0]:.3f})")
+        cb = fig.colorbar(im, ax=ax, shrink=0.85, pad=0.02)
+        cb.ax.tick_params(labelsize=7)
+        cb.outline.set_visible(False)
+
+    n = df.groupby(["kappa", "p", "level", "b"]).size()
+    reps = f"{n.min()}" if n.min() == n.max() else f"{n.min()}-{n.max()}"
+    fig.suptitle(f"Coarse Experiment 1: mean burned fraction A(geometry, b)  "
+                 f"(STUDY, L = 256, {reps} replicates per cell)", fontsize=11, color=INK_SECONDARY)
     return fig
 
 

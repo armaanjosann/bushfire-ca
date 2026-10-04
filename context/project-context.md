@@ -137,7 +137,7 @@ If no `FUEL` cell exists, return a zero-burn run rather than raising.
 
 Used only when `settlement=True` (Experiment 1 and 3; omit elsewhere to save time).
 
-- A single filled square block of side `SETTLEMENT_SIDE`, centred at `(L//2, L//2)`, cells set to state `SETTLEMENT`. **`SETTLEMENT_SIDE` is provisionally 16 at `L=256`; the binding value is fixed by the pilot in §10.2 O1 before Experiment 1 runs at full replicates.**
+- A single filled square block of side `SETTLEMENT_SIDE`, centred at `(L//2, L//2)`, cells set to state `SETTLEMENT`. **`SETTLEMENT_SIDE = 16` at `L=256`, frozen by the pilot in §10.2 O1 (DEC-037).** The pilot found no side that discriminates geometries by `P(settlement_reached)`, so the value is the one the pilot showed to be harmless (`n_occupied` within 1% of no settlement), not one it selected; SQ4 is measured on `settlement_reached_step` (§10.2 O1, branch 3).
 - Settlement cells have `f = 0`, never burn, never propagate. They act as a hole in the fuel bed.
 - The side may be set per run through `geometry_params["settlement_side"]` (int), defaulting to `SETTLEMENT_SIDE` when absent. Placement, the settlement ring and the `buffer` generator all read the resolved value; this is how the §10.2 O1 pilot varies side without global state. Grid builders for `settlement=True` runs always set the key explicitly, so a run's `run_id` never depends on whether the default was written out; runs without a settlement omit it (DEC-007, DEC-015).
 - **`settlement_reached` is True iff any cell in the 1-cell-wide ring immediately surrounding the settlement block enters state `BURNING` at any time during the run.** Record the step at which it first happens (`settlement_reached_step`, else `null`).
@@ -463,6 +463,13 @@ The constraint runs the other way instead: because O4 in §2 means this threshol
 3. If no side satisfies both, the discriminating variable is wrong rather than the size: switch the SQ4 metric to `settlement_reached_step` (time-to-reach, which does not saturate) and record that change here.
 
 The chosen value is then written into §3.6 as a constant with this justification attached. The pilot is a Methods paragraph, not a result.
+
+**Resolved (DEC-037). Branch 3 of the rule applied; `SETTLEMENT_SIDE = 16`.** The pilot ran as specified (800 runs: 400 settlement runs and 400 no-settlement controls for rule 2; none truncated). `P(settlement_reached)` is outside [0.3, 0.8] for every side at both `kappa`: at `kappa=0` (`p=0.527`) it is saturated, 0.92–0.96 for sides 8, 16, 32, 48; at `kappa=2` (`p=0.550`) it is 0.10–0.18. It barely moves with side, so the size is not the discriminating variable. Rule 2 independently rejects sides 32 and 48 (`n_occupied` −1.5% / −3.5% at `kappa=0`, −1.6% / −3.5% at `kappa=2`); sides 8 and 16 pass (−0.15% / −0.39% and −0.10% / −0.51%). The rule selects no side, so:
+
+- **The SQ4 metric is `settlement_reached_step`** (time to first burning ring cell), with `settlement_reached` still recorded. No schema change: both columns are in §5. The step is `null` for runs that never reach the settlement, so those runs are censored, not missing, and the analysis must treat them so (in the pilot, 5–9 of 50 runs reach it at `kappa=2`).
+- **`SETTLEMENT_SIDE` stays 16**, the value every earlier spec and test was built on. Nothing in the pilot favours another size on rule 1, and 16 passes rule 2. This is a judgement the rule does not make; DEC-037 records it.
+
+*Status: resolved.*
 
 **O4 — Burn-size distribution replicate count. Gate: after Experiment 2 yields measured per-condition `p_c`.**
 
