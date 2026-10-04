@@ -858,3 +858,31 @@ Acceptance criteria, row identity (DEC-004) and the I1 binding (DEC-014) are unc
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-036 — SPEC-08: choices the spec left open
+- **Date:** 2026-10-04
+- **Raised by:** Aaron (on SPEC-08)
+- **Spec:** SPEC-08
+- **Type:** deviation
+- **Status:** resolved — no contract touched; reviewer to confirm
+
+**Situation.** SPEC-08 fixes the registry interface and what the validation figure must show. It is silent on the output format, how the style is applied, where the captions live, how the literature value reaches the figure, and the layout. One process point too: `depends_on: [SPEC-07]`, which is `in review`, not `done`.
+
+**Decision.**
+
+- *Dependency.* Implemented with SPEC-07 `in review`, at the project lead's instruction, as SPEC-06 was with SPEC-05 open. SPEC-07's code and `results/exp0.parquet` / `pc_estimates.parquet` are in this branch's history (stacked on SPEC-19). If SPEC-07's results are regenerated, the figure rebuilds from them with no change.
+- *Builders return a bare `Figure`.* They use `matplotlib.figure.Figure`, not `pyplot`, so no figure is registered in global pyplot state, nothing needs closing, and a notebook shows exactly one copy. `matplotlib.use` is never called, so the notebook's inline backend is untouched. Checked by passing the returned figure through IPython's inline formatter: it yields `image/png`, and `pyplot.get_fignums()` is empty afterwards.
+- *Style and registry.* `@figure(name, caption=...)` registers the builder and wraps it in `rc_context(STYLE)`, so the style never leaks into the caller's `rcParams`. It rejects a duplicate name, and a builder that returns anything other than a `Figure` raises `TypeError`. The palette is the first three validated categorical slots (one fixed colour per lattice size, plus a marker per size so identity is not colour-alone).
+- *Captions.* Stored next to the function and exposed as `CAPTIONS[name]` and `FIGURES[name].caption`. A caption carries no measured number (those are in the legend, computed from the data), so it cannot go stale when a result is regenerated.
+- *Output.* `build()` writes `<outdir>/<name>.png` at 200 dpi with the `Software` metadata tag removed, so the bytes depend only on data and code. Two builds compare byte-identical (tested). The `--all` flag mentioned in `.gitignore` is supported alongside `--figure`.
+- *Reading results.* The crossing is the single `PERCOLATION` / `none` / `b=0` / `kappa=0` / `fss_crossing` / null-`L` row of `pc_estimates.parquet` (DEC-004), read with pandas directly rather than through `src.analysis`, so `make_figures.py` imports nothing from `src/`. It raises `FileNotFoundError` for a missing file, `LookupError` for zero or several matching rows, and `ValueError` for a missing lattice size, non-`PERCOLATION` rows, null `spanned` or truncated runs. `RESULTS_DIR` is a module constant resolved from `__file__`, so the script works from any directory; tests repoint it.
+- *`P_C_LITERATURE` is repeated as a literal* in `make_figures.py` (0.407) rather than imported from `src.model`. Importing it needs a `sys.path` edit for `python figures/make_figures.py`, and a `src` import is what the "reads `results/` only" rule is meant to keep out. `tests/test_figures.py` asserts it equals `src.model.P_C_LITERATURE`.
+- *Layout.* Two panels: (a) the full sweep `p ∈ [0.30, 0.60]`, (b) a zoom on `[0.38, 0.44]`. The crossing (0.4064) and the literature value (0.407) are 0.0006 apart, which is invisible on the full axis. The zoom shows both, with the crossing shaded to its standard error. Wilson 95% bands are shown on each curve. The suptitle and caption both state that the `PERCOLATION` threshold is not comparable with any `STUDY` threshold (D5); no `STUDY` value appears anywhere in the figure, and a test checks that.
+
+**Note.** `project-context.md` §6.1 says `P_C_LITERATURE` "is used in exactly one place: an assertion in Experiment 0's validation". §10.1 D5 and SPEC-08 require the validation figure to mark it, so the figure is a second, display-only use. Read as: it is never a grid value or a substitute for a measured `p_c`, which holds. If §6.1's wording is meant literally, it wants a clause for the figure. Not edited here.
+
+**Not verified.** The style was checked in an IPython inline formatter, not in a live Jupyter notebook, because no notebook exists until SPEC-20.
+
+**Context impact.** none
+
+**Commit.** pending
