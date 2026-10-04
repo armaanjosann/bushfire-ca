@@ -992,3 +992,42 @@ The window width, step, point count, lattice sizes and replicate count are exact
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-041 — SPEC-14: `strips_perp` has no finite-size-scaling crossing; its threshold falls with L
+
+- **Date:** 2026-10-04
+- **Raised by:** Armaan (SPEC-14)
+- **Spec:** SPEC-14 (blocks SPEC-15's `strips_perp` arm)
+- **Type:** blocker — the spec cannot be implemented as written for one condition
+- **Status:** **open** — needs a decision from both of us (workflow-rules §6)
+
+**Situation.** Experiment 2 ran in full: 126,000 rows in `results/exp2.parquet` (code_version `6d54d72`, none truncated), plus the 18,300-row pre-pass. `random` and `patches(4)` behave like ordinary percolation: their P(span) curves at L = 128, 256, 512 cross at one point, and `pc_rows` gives
+
+| condition | FSS crossing p_c | untreated (0b, kappa 0) | shift |
+|---|---|---|---|
+| random | 0.5342 ± 0.0004 | 0.4769 | +0.057 |
+| patches(k=4) | 0.5225 ± 0.0004 | 0.4769 | +0.046 |
+
+`strips_perp(w=4)` does not. Its sweep was run twice: centred on 0.750 from the L = 128 pre-pass (DEC-040), then re-centred by hand on 0.650 after the first sweep showed P(span) increasing with L at every point in the window. Both times `pc_rows` raised "no valid crossing". The data show why. The p at which P(span) first reaches 0.5, read from the measured curves (both windows, 0.60–0.80, R = 500):
+
+| condition | L = 128 | L = 256 | L = 512 |
+|---|---|---|---|
+| random | 0.534 | 0.534 | 0.534 |
+| patches(4) | 0.526 | 0.524 | 0.524 |
+| **strips_perp(4)** | **0.753** | **0.716** | **0.672** |
+
+For `strips_perp` the effective threshold falls by about 0.04 per doubling of L, with no sign of settling between 128 and 512. There is no L-independent crossing for finite-size scaling to find, so the estimator is right to refuse, and nothing has been written to `pc_estimates.parquet` for any of the three conditions (`run_exp2` checks all before writing any).
+
+**Interpretation.** At b = 0.15 and w = 4 the bands are about 27 cells apart, so L = 128 holds only about 5 of them. A band stops an edge fire only if the front fails to breach it anywhere along its length; a wider lattice gives the front more independent chances to breach, which lowers the effective threshold as L grows. The band spacing is a fixed length scale, so the usual finite-size-scaling assumption (one diverging length) does not hold until L is much larger than the spacing. Whether the threshold converges to a value above the untreated 0.477 — a genuine shift of the critical point — or keeps falling towards the `random`-like value is exactly the primary research question for this layout, and the data in hand do not settle it. A probe at L = 1024 is running to see whether the drift continues; its result will be appended here.
+
+**Options.**
+
+- **(A) Record what is valid and report strips as scale-dependent.** Write the `random` and `patches` rows now (one `fss_crossing` + three `var_peak` each, SPEC-06 identity). For `strips_perp`, write no `fss_crossing` row; report the per-L 50% points above in the report and figures as the finding — the threshold shift under strips is finite-size, decreasing with landscape size relative to band spacing. SPEC-15 runs 2b for `none`, `random` and `patches` and drops or redefines its `strips_perp` arm.
+- **(B) As (A), plus give SPEC-15 an L = 256 strips value.** Experiment 2b runs at L = 256, so the operationally relevant threshold for its strips runs is the L = 256 one (0.716). This needs a new `pc_estimates` row type or a constant in the 2b builder, i.e. a contract change to §4.6 or SPEC-15.
+- **(C) Add L = 1024 (and possibly 2048) to the strips sweep** and see whether a crossing appears. Cost at L = 1024 is about 4× L = 512 per run; 21 points × 500 replicates is roughly 30 core-hours, two hours on 15 cores, before knowing whether it helps.
+
+**Recommendation.** (A) now, because it is honest and costs nothing, with the L = 1024 probe deciding whether (C) is worth running before submission. The finding itself — layout shifts the threshold modestly for random and patches, and strips produce a large but landscape-size-dependent shift — answers the primary research question more interestingly than a single number would.
+
+**Context impact.** If (A) or (B) is chosen: `project-context.md` §6.2 (Experiment 2 and 2b) and SPEC-15's condition list. None until decided.
+
+**Commit.** pending

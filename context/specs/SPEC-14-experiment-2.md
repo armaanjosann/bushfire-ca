@@ -1,7 +1,7 @@
 ---
 id: SPEC-14
 title: Experiment 2 — threshold shift
-status: in progress
+status: blocked
 owner: Armaan
 reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
@@ -10,7 +10,7 @@ implements: [§6.2 Exp 2, §6.1, §2 O4]
 issue: [#14](https://github.com/armaanjosann/bushfire-ca/issues/14)
 branch: spec/SPEC-14-experiment-2
 pr:
-decisions: [DEC-003, DEC-004, DEC-005, DEC-011, DEC-012, DEC-040]
+decisions: [DEC-003, DEC-004, DEC-005, DEC-011, DEC-012, DEC-040, DEC-041]
 ---
 
 # SPEC-14 — Experiment 2: threshold shift
