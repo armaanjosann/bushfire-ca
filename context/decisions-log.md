@@ -925,3 +925,32 @@ No side lies in [0.3, 0.8] at either `kappa`, so the result does not depend on w
 **Context impact.** `project-context.md` §3.6 (`SETTLEMENT_SIDE` frozen at 16, marker removed) and §10.2 O1 (resolution recorded, SQ4 metric changed to `settlement_reached_step`). Only O4 remains open in §10.
 
 **Commit.** pending
+
+### DEC-039 — SPEC-13: ownership, the Experiment 2 selection rule recorded before the run, and the illustrative scars
+
+- **Date:** 2026-10-04
+- **Raised by:** Armaan (SPEC-13)
+- **Spec:** SPEC-13 (and SPEC-14)
+- **Type:** ambiguity
+- **Status:** resolved — reviewer to confirm
+
+**Ownership.** SPEC-13 moves from Aaron to Armaan, reviewer Aaron, agreed between us on 2026-10-04 in exchange for SPEC-06 and SPEC-08, which Aaron implemented for the Checkpoint 2 notebook.
+
+**Experiment 2 selection rule, recorded here before `results/exp1.parquet` exists** (SPEC-13 acceptance; §6.2; DEC-012), unchanged:
+
+> "Best" means the lowest mean `burned_fraction` in Experiment 1 at `b = 0.15`, `p_rel = +0.05`, `kappa = 0`. It is chosen separately among the three `patches` levels (`k ∈ {4, 8, 16}`) and among the three `strips_perp` levels (`w ∈ {4, 8, 16}`). `random` is always included. Experiment 2 measures exactly one level per family.
+
+This commit precedes the commit that adds `results/exp1.parquet`, so the rule is fixed in history before the data it is applied to.
+
+**Choices the spec left open.**
+
+- *Seeds.* Seed = `4,000,000 + position·200 + replicate`, position in (kappa, p, condition-level, b) order, so a staged run at fewer replicates resumes into the full run with the same `run_id`s. Clear of the other experiments' seed ranges.
+- *Operating points.* `p_rel ∈ {−0.05, 0, +0.05}` resolve against Experiment 0b at the matching kappa (0.4769 and 0.5004 for kappa 0 and 2); `p = 0.70` carries `p_rel = null`. The frame check recomputes every resolved `p` and fails if any differs, which catches the §2 O4 failure mode (a PERCOLATION or wrong-kappa threshold) that the spec names as the most likely silent error.
+- *Illustrative scars (DEC-009).* Eight configs, replicate 0 of these Experiment 1 points, all at `p_rel = +0.05`: kappa 0 with `none` and `strips_perp(w=8)` at b = 0.15; kappa 2 with `none`, then `random`, `patches(k=8)`, `strips_perp(w=8)`, `strips_para(w=8)` and `buffer` at b = 0.15. They are picked out of `exp1_grid` itself, so every scar has a matching row in `exp1.parquet` with the same `run_id`. The npz keys are `<run_id>__scar`, `<run_id>__ignition_step`, `<run_id>__config` (canonical JSON) and `run_ids`. SPEC-17 may want a different set; changing `SCAR_LEVELS` and rerunning `run.py --exp scars` (seconds) is all it takes.
+- *Run entry.* `run.py --exp scars` is placed right after `1`, so `--exp all` captures scars after the sweep.
+- *Tests.* `tests/test_exp1.py` is new. SPEC-13's may-touch list omits tests; the spec's acceptance criteria need them.
+- *Compute.* Measured from the coarse run at 83 ms per run, the full 107,200-run grid is about 2.5 core-hours, roughly 11× below §6.3's 28-core-hour estimate. That is an undershoot, not the overshoot the spec warns about; the bounding box is doing its job.
+
+**Context impact.** none
+
+**Commit.** pending

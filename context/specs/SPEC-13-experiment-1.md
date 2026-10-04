@@ -10,7 +10,7 @@ implements: [§6.2 Exp 1, §6.1]
 issue: [#13](https://github.com/armaanjosann/bushfire-ca/issues/13)
 branch: spec/SPEC-13-experiment-1
 pr:
-decisions: [DEC-003, DEC-009, DEC-011, DEC-013, DEC-015]
+decisions: [DEC-003, DEC-009, DEC-011, DEC-013, DEC-015, DEC-039]
 ---
 
 # SPEC-13 — Experiment 1: geometry × budget
