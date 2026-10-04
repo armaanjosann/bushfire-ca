@@ -1,7 +1,7 @@
 ---
 id: SPEC-07
 title: Experiment 0 — percolation validation run
-status: not started
+status: in review
 owner: Aaron
 reviewer: Armaan
 phase: P2 — Harness and validation (Sprint 1)
@@ -10,7 +10,7 @@ implements: [§6.2 Exp 0, §6.1, §1]
 issue:
 branch: spec/SPEC-07-experiment-0
 pr:
-decisions: [DEC-001, DEC-004, DEC-014]
+decisions: [DEC-001, DEC-004, DEC-014, DEC-034]
 ---
 
 # SPEC-07 — Experiment 0: percolation validation run
