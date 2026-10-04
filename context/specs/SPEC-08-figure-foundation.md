@@ -1,15 +1,15 @@
 ---
 id: SPEC-08
 title: Figure foundation and the validation figure
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P2 — Harness and validation (Sprint 1)
 depends_on: [SPEC-07]
 implements: [§9, §10.1 D5]
-issue:
+issue: [#8](https://github.com/armaanjosann/bushfire-ca/issues/8)
 branch: spec/SPEC-08-figure-foundation
-pr:
+pr: "#35"
 decisions: [DEC-001, DEC-016, DEC-017, DEC-036]
 ---
 
@@ -99,8 +99,8 @@ pytest -q tests/test_figures.py
 - [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [x] Any contract change applied to `project-context.md` in this same PR
 - [x] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

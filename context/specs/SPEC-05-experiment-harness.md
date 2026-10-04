@@ -1,15 +1,15 @@
 ---
 id: SPEC-05
 title: Experiment harness — schema, parallel runner, resume
-status: in progress
+status: done
 owner: Aaron
 reviewer: Armaan
 phase: P2 — Harness and validation (Sprint 1)
 depends_on: [SPEC-03, SPEC-04]
 implements: [§4.5, §5, §8]
-issue:
+issue: [#5](https://github.com/armaanjosann/bushfire-ca/issues/5)
 branch: spec/SPEC-05-experiment-harness
-pr:
+pr: "#30"
 decisions: [DEC-006, DEC-009, DEC-029, DEC-030, DEC-031]
 ---
 
@@ -116,10 +116,10 @@ PY
 - [ ] Named invariants pass locally
 - [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
+- [x] `status` updated in this file and in `progress-tracker.md`
 - [ ] `results/smoke.parquet` **deleted** before the PR — only runs backing a reported figure or a validation claim get committed (`workflow-rules.md` §9)
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

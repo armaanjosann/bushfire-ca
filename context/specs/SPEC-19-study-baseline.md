@@ -1,15 +1,15 @@
 ---
 id: SPEC-19
 title: Experiment 0b — untreated STUDY baseline thresholds
-status: in review
+status: done
 owner: Aaron
 reviewer: Armaan
 phase: P2 — Harness and validation (Sprint 1 → 2)
 depends_on: [SPEC-05, SPEC-06]
 implements: [§6.1, §6.2 Exp 0b]
-issue:
+issue: [#19](https://github.com/armaanjosann/bushfire-ca/issues/19)
 branch: spec/SPEC-19-study-baseline
-pr:
+pr: "#34"
 decisions: [DEC-011, DEC-035]
 ---
 
@@ -104,10 +104,10 @@ PY
 - [ ] Named invariants pass locally
 - [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
+- [x] `status` updated in this file and in `progress-tracker.md`
 - [ ] `results/exp0b_prepass.parquet`, `results/exp0b.parquet` and the updated `pc_estimates.parquet` committed with a real `code_version`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

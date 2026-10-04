@@ -1,15 +1,15 @@
 ---
 id: SPEC-20
 title: Notebook foundation and the model-and-validation notebook
-status: in review
+status: done
 owner: Aaron
 reviewer: Armaan
 phase: P2 — Harness and validation (Sprint 2)
 depends_on: [SPEC-08]
 implements: [§9]
-issue:
+issue: [#28](https://github.com/armaanjosann/bushfire-ca/issues/28)
 branch: spec/SPEC-20-notebook-foundation
-pr:
+pr: "#36"
 decisions: [DEC-016, DEC-017, DEC-018]
 ---
 
@@ -123,9 +123,9 @@ PY
 
 - [ ] Acceptance criteria all met
 - [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

@@ -1,15 +1,15 @@
 ---
 id: SPEC-06
 title: p_c estimation, finite-size scaling, and the p_rel resolver
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P2 — Harness and validation (Sprint 1)
 depends_on: [SPEC-05]
 implements: [§4.6, §6.1]
-issue:
+issue: [#6](https://github.com/armaanjosann/bushfire-ca/issues/6)
 branch: spec/SPEC-06-pc-estimation
-pr:
+pr: "#31"
 decisions: [DEC-004, DEC-032]
 ---
 
@@ -115,9 +115,9 @@ grep -rn "0\.407\|P_C_LITERATURE" src/analysis.py && echo "FAIL: literature cons
 - [ ] Named invariants pass locally
 - [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

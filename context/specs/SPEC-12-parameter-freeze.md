@@ -1,15 +1,15 @@
 ---
 id: SPEC-12
 title: Settlement-size pilot, coarse Experiment 1, parameter freeze
-status: in review
+status: done
 owner: Aaron
 reviewer: Armaan
 phase: P4 — Parameter freeze (Sprint 2)
 depends_on: [SPEC-05, SPEC-06, SPEC-10, SPEC-11, SPEC-19]
 implements: [§10.2 O1, §3.6, §6.2 Exp 1]
-issue:
+issue: [#12](https://github.com/armaanjosann/bushfire-ca/issues/12)
 branch: spec/SPEC-12-parameter-freeze
-pr:
+pr: "#37"
 decisions: [DEC-003, DEC-007, DEC-011, DEC-015, DEC-037]
 ---
 
@@ -115,9 +115,9 @@ grep -n "SETTLEMENT_SIDE" src/model.py context/project-context.md
 - [ ] Named invariants pass locally
 - [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [ ] **Contract change applied to `project-context.md` §3.6 and §10.2 in this same PR**
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

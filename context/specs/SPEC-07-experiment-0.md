@@ -1,15 +1,15 @@
 ---
 id: SPEC-07
 title: Experiment 0 — percolation validation run
-status: in review
+status: done
 owner: Aaron
 reviewer: Armaan
 phase: P2 — Harness and validation (Sprint 1)
 depends_on: [SPEC-05, SPEC-06]
 implements: [§6.2 Exp 0, §6.1, §1]
-issue:
+issue: [#7](https://github.com/armaanjosann/bushfire-ca/issues/7)
 branch: spec/SPEC-07-experiment-0
-pr:
+pr: "#33"
 decisions: [DEC-001, DEC-004, DEC-014, DEC-034]
 ---
 
@@ -101,10 +101,10 @@ PY
 - [ ] Named invariants pass locally
 - [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
+- [x] `status` updated in this file and in `progress-tracker.md`
 - [ ] `results/exp0.parquet` and `results/pc_estimates.parquet` committed, with a real `code_version`
-- [ ] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] PR open, linked to the issue — status `in review`
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 
