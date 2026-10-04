@@ -757,3 +757,52 @@ The harness is indistinguishable from a raw `Pool.map`, and the speed-up rises w
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-032 — SPEC-06: who builds the `pc_estimates` rows, and the estimator's method
+- **Date:** 2026-10-02
+- **Raised by:** agent (on SPEC-06)
+- **Spec:** SPEC-06 (affects SPEC-07, SPEC-14, SPEC-19)
+- **Type:** ambiguity
+- **Status:** resolved — within the spec's silence, no contract touched; reviewer to confirm
+
+**Situation.** SPEC-06 fixes `estimate_pc(df, condition, regime) -> (p_c, stderr)` and `write_pc_estimates(rows, path)`, and says each measured key gets three per-`L` `var_peak` rows plus one `fss_crossing` row. It does not say what produces the `var_peak` rows or the `rows` argument: `estimate_pc` returns only the crossing, and `write_pc_estimates` takes rows that already exist. SPEC-07, SPEC-14 and SPEC-19 say "feed the frame to `estimate_pc` and append the rows", so a caller has no way to get the per-`L` rows. The spec also names the crossing and variance-peak methods without saying how either is computed.
+
+**Decision.**
+
+- A new public function `pc_rows(df, condition, regime) -> list[dict]` returns the four rows (three `var_peak` with `L` set, one `fss_crossing` with `L` null) in the §4.6 columns, ready for `write_pc_estimates`. Its crossing row equals `estimate_pc`'s return exactly. No signature in §4 changes and no column is added. `write_pc_estimates` accepts a list of dicts or a DataFrame.
+- *Crossing.* Per `L`, binomial-logit maximum likelihood of the indicator (`spanned` under edge ignition, `reached_edge` under point ignition, whichever is non-null) against `p`. The estimate is the mean over all pairs of sizes of the `p` where two fitted logits are equal. A pair with a non-increasing fit, parallel curves, or a crossing outside the `p` range both sizes were swept over makes the estimate raise. It is never extrapolated.
+- *Variance peak.* Per `L`, the vertex of a quadratic fitted to the cells with `Var(burned_fraction)` at least half the maximum. A peak at an end of the sweep raises.
+- *Standard errors.* Bootstrap over the runs in each `(L, p)` cell, 400 replicates, seeded from a module constant so a frame always gives the same answer. At least 90% of replicates must give an estimate.
+- *Frame checks beyond the spec.* `estimate_pc` raises if the `(regime, condition)` rows hold more than one `b`, `kappa`, `geometry_params`, `beta`, `f_treat`, `phi`, `tau`, `diagonal_factor`, `ignition` or `settlement`. A frame that mixes them mixes thresholds, and `patches` levels in particular would otherwise be averaged (DEC-012). Fewer than two lattice sizes raises, and exactly two warns that the stderr is unreliable, as the spec's risks note asks.
+- `resolve_p` compares `b` and `kappa` exactly, raises `FileNotFoundError` for a missing file and `LookupError` for zero or more than one match, and raises `ValueError` if `p_c + p_rel` is not a probability.
+
+**Follow-up (not done here, because a spec may not edit another spec).** SPEC-07, SPEC-14 and SPEC-19 should say "call `pc_rows(df, condition, regime)` and pass the result to `write_pc_estimates`".
+
+**Rationale.** The row identity of DEC-004 is only usable if something produces those rows. Logistic crossing is smooth under noise, where an interpolated crossing of two noisy empirical curves can have several sign changes. The bootstrap gives a stderr that is checked against the observed scatter in `tests/test_analysis.py`.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-033 — SPEC-07, SPEC-14 and SPEC-19 aligned to `pc_rows`
+- **Date:** 2026-10-02
+- **Raised by:** Aaron (decision); applied by agent
+- **Spec:** SPEC-07, SPEC-14, SPEC-19 (follow-up to DEC-032)
+- **Type:** spec alignment
+- **Status:** resolved
+
+**Situation.** DEC-032 added `pc_rows(df, condition, regime)` to SPEC-06, because nothing in the specified interface produces the three per-`L` `var_peak` rows that DEC-004 requires. SPEC-07, SPEC-14 and SPEC-19 said "feed the frame to `estimate_pc`" and "uses `estimate_pc` / `write_pc_estimates` as they stand". Followed literally, that leaves an implementer unable to meet those specs' own acceptance criteria and forces a `blocked` under `workflow-rules.md` §6. DEC-032 listed this as a follow-up it could not apply, since a spec may not edit another spec.
+
+**Decision.** Aaron authorised the edits. The scope and interface text of each spec now routes through `pc_rows`:
+
+- **SPEC-07** — In scope and Interface contract. The frame goes to `pc_rows`, and its rows to `write_pc_estimates`.
+- **SPEC-14** — In scope and Interface contract. `pc_rows(df, condition, "STUDY")` per condition, one condition level per call.
+- **SPEC-19** — Context to read, In scope and Interface contract. One `kappa` per call.
+
+Acceptance criteria, row identity (DEC-004) and the I1 binding (DEC-014) are unchanged. The edits are wording only.
+
+**Rationale.** Keeps the specs consistent with the implemented SPEC-06 interface before any of them is picked up.
+
+**Context impact.** none. No §4 signature or §5 column changes. This completes the follow-up in DEC-032.
+
+**Commit.** pending
