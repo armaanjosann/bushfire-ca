@@ -36,7 +36,7 @@ Full definitions in `workflow-rules.md` §4.
 | SPEC-10 | `patches`, `strips_perp`, `strips_para` | Armaan | P3 — Treatment geometries | `done` | SPEC-09 | #27 | DEC-007, DEC-008, DEC-024, DEC-025 |
 | SPEC-11 | `buffer` | Armaan | P3 — Treatment geometries | `done` | SPEC-02, SPEC-09 | #27 | DEC-007, DEC-026 |
 | SPEC-12 | Settlement pilot, coarse Exp 1, freeze | Aaron | P4 — Parameter freeze | `done` | SPEC-05, SPEC-06, SPEC-10, SPEC-11, SPEC-19 | #37 | DEC-003, DEC-007, DEC-011, DEC-015, DEC-037 |
-| SPEC-13 | Experiment 1: geometry × budget | Armaan | P5 — Full experiments | `in progress` | SPEC-12 |  | DEC-003, DEC-009, DEC-011, DEC-013, DEC-015, DEC-039 |
+| SPEC-13 | Experiment 1: geometry × budget | Armaan | P5 — Full experiments | `in review` | SPEC-12 |  | DEC-003, DEC-009, DEC-011, DEC-013, DEC-015, DEC-039 |
 | SPEC-14 | Experiment 2: threshold shift | Armaan | P5 — Full experiments | `not started` | SPEC-06, SPEC-13, SPEC-19 |  | DEC-003, DEC-004, DEC-005, DEC-011, DEC-012 |
 | SPEC-15 | Tail fitting, Experiment 2b | Armaan | P5 — Full experiments | `not started` | SPEC-14, SPEC-19 |  | DEC-005, DEC-012 |
 | SPEC-16 | Experiments 3 and 4, frame invariance | Aaron | P5 — Full experiments | `not started` | SPEC-13 |  | DEC-003, DEC-008, DEC-011, DEC-015 |
