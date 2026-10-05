@@ -1576,9 +1576,284 @@ def run_exp2b(exp2_path: str = EXP2_PATH, pc_path: str = PC_PATH, out_path: str 
     return fits
 
 
-def run_exp3():
-    raise NotImplementedError("Experiment 3 (wind interaction) lands in SPEC-16")
+# --- Experiment 3: wind interaction (SPEC-16, §6.2) ---------------------------
+
+EXP3_PATH = "results/exp3.parquet"
+EXP3_L = 256
+EXP3_KAPPAS = (0.0, 1.0, 2.0, 4.0)
+EXP3_B = 0.15
+EXP3_P_REL = 0.05
+EXP3_R = 200
+EXP3_PHI = 0.0
+EXP3_SEED_BASE = 6_000_000      # clear of Exp 1 (4.0-4.11M) and Exp 2 (5.0-6.0M is 2's; see note)
 
 
-def run_exp4():
-    raise NotImplementedError("Experiment 4 (sensitivity) lands in SPEC-16")
+def exp3_levels(exp1_path: str = EXP1_PATH) -> list[tuple[str, dict, float]]:
+    """The seven treated conditions of §6.2 Experiment 3, plus `none` at b=0.
+
+    Seven is the roadmap's condition list (§4.4) minus the untreated reference:
+    `random`, `patches` at all three scales, `strips_perp`, `strips_para` and
+    `buffer`. The strip widths are the level Experiment 2 selected, so the
+    orientation contrast is measured at the width the rest of the project uses
+    (DEC-044). `none` at b=0 is carried as the untreated reference at every
+    kappa, which the §11 efficiency metric divides against.
+    """
+    w = exp2_selection(exp1_path)["strips_perp"]["params"]
+    levels = [("random", {}, EXP3_B)]
+    levels += [("patches", {"k": k}, EXP3_B) for k in (4, 8, 16)]
+    levels += [("strips_perp", dict(w), EXP3_B), ("strips_para", dict(w), EXP3_B)]
+    levels += [("buffer", {}, EXP3_B)]
+    assert len(levels) == 7, len(levels)
+    return [("none", {}, 0.0)] + levels
+
+
+def exp3_grid(exp1_path: str = EXP1_PATH, pc_path: str = PC_PATH,
+              side: int = SETTLEMENT_SIDE, replicates: int = EXP3_R
+              ) -> tuple[list[Config], list[float]]:
+    """The §6.2 Experiment 3 grid: `(configs, p_rel)`, parallel, for `run_configs`.
+
+    4 kappa x 8 arms x R = 200 = 6,400 runs. `p` resolves to that kappa's own
+    untreated threshold + 0.05 — four different thresholds, not one, which the
+    spec names as the most likely error here (§6.1, §2 O4).
+    """
+    if not 1 <= replicates <= EXP3_R:
+        raise ValueError(f"replicates must be in 1..{EXP3_R}, got {replicates}")
+    levels = exp3_levels(exp1_path)
+    cfgs, p_rels, pos = [], [], 0
+    for kappa in EXP3_KAPPAS:
+        p = resolve_p(EXP3_P_REL, regime="STUDY", condition="none", b=0.0, kappa=kappa, path=pc_path)
+        for condition, prm, b in levels:
+            for r in range(replicates):
+                cfgs.append(Config(
+                    L=EXP3_L, regime="STUDY", p=p, f_treat=0.2,
+                    beta=0.8, kappa=kappa, phi=EXP3_PHI, tau=1, diagonal_factor=True,
+                    condition=condition, b=b, geometry_params={**prm, "settlement_side": side},
+                    ignition="random_cell", settlement=True,
+                    seed=EXP3_SEED_BASE + pos * EXP3_R + r,
+                ))
+                p_rels.append(EXP3_P_REL)
+            pos += 1
+    return cfgs, p_rels
+
+
+def _check_exp3_frame(df: pd.DataFrame, n_expected: int, pc_path: str = PC_PATH) -> None:
+    problems = []
+    if len(df) != n_expected:
+        problems.append(f"{len(df)} rows, expected {n_expected}")
+    if df["truncated"].any():
+        problems.append("truncated rows present (§3.7, I10)")
+    if not df["run_id"].is_unique:
+        problems.append("run_id is not unique")
+    fixed = {"regime": "STUDY", "L": EXP3_L, "beta": 0.8, "f_treat": 0.2, "tau": 1.0,
+             "phi": EXP3_PHI, "diagonal_factor": True, "ignition": "random_cell", "settlement": True}
+    for col, want in fixed.items():
+        if not (df[col] == want).all():
+            problems.append(f"{col} is not {want!r} on every row")
+    if df["settlement_reached"].isna().any():
+        problems.append("settlement_reached is null on some rows")
+    if set(df["kappa"]) != set(EXP3_KAPPAS):
+        problems.append(f"kappa values are {sorted(set(df['kappa']))}, expected {list(EXP3_KAPPAS)}")
+    # each kappa's p is that kappa's own threshold + 0.05, never another kappa's
+    for kappa, sub in df.groupby("kappa"):
+        want = resolve_p(EXP3_P_REL, regime="STUDY", condition="none", b=0.0,
+                         kappa=float(kappa), path=pc_path)
+        if not np.allclose(sub["p"], want, rtol=0, atol=1e-12):
+            problems.append(f"p at kappa={kappa} is not that kappa's threshold + {EXP3_P_REL}")
+    treated = df[df["condition"] != "none"]
+    if not (treated["b"] == EXP3_B).all():
+        problems.append(f"a treated row is not at b={EXP3_B}")
+    # seven treated *levels*: patches appears three times under one condition name
+    levels_per_kappa = treated.groupby("kappa").apply(
+        lambda g: g.groupby(["condition", "geometry_params"]).ngroups, include_groups=False)
+    if levels_per_kappa.min() != 7:
+        problems.append(f"a kappa arm has {levels_per_kappa.min()} treated levels, expected 7")
+    if problems:
+        raise AssertionError("Experiment 3 frame failed: " + "; ".join(problems))
+
+
+def run_exp3(exp1_path: str = EXP1_PATH, out_path: str = EXP3_PATH, pc_path: str = PC_PATH,
+             side: int = SETTLEMENT_SIDE, replicates: int = EXP3_R) -> pd.DataFrame:
+    """Experiment 3: is the ranking of treatment arrangements wind-dependent (SQ1)."""
+    cfgs, p_rels = exp3_grid(exp1_path, pc_path, side, replicates)
+    df = run_configs(cfgs, out_path, p_rel=p_rels)
+    df = df[df["run_id"].isin({config_run_id(c) for c in cfgs})]
+    _check_exp3_frame(df, len(cfgs), pc_path)
+    print(f"Experiment 3: {len(df)} rows in {out_path} "
+          f"({len(EXP3_KAPPAS)} kappa x {len(exp3_levels(exp1_path))} arms, R={replicates}).")
+    return df
+
+
+# --- Experiment 4: sensitivity (SPEC-16, §6.2, DEC-011) -----------------------
+
+EXP4_PATH = "results/exp4.parquet"
+EXP4_L = 256
+EXP4_KAPPA = 2.0
+EXP4_P_REL = 0.05               # resolved once, then held fixed; rows carry p_rel null
+EXP4_F_TREAT = (0.0, 0.2, 0.4)
+EXP4_BETA = (0.7, 0.8, 0.9)
+EXP4_B = 0.15
+EXP4_R = 200
+EXP4_SEED_BASE = 7_000_000
+
+
+def exp4_levels(exp1_path: str = EXP1_PATH) -> list[tuple[str, dict, float]]:
+    """The reduced condition set: the untreated reference and one level of each
+    geometry family that the primary analysis uses (DEC-044). Deliberately
+    smaller than Experiment 3 — this is a sensitivity check, not a second main
+    experiment (SPEC-16 Behaviour)."""
+    sel = exp2_selection(exp1_path)
+    return [("none", {}, 0.0), ("random", {}, EXP4_B),
+            ("patches", dict(sel["patches"]["params"]), EXP4_B),
+            ("strips_perp", dict(sel["strips_perp"]["params"]), EXP4_B),
+            ("buffer", {}, EXP4_B)]
+
+
+def exp4_grid(exp1_path: str = EXP1_PATH, pc_path: str = PC_PATH,
+              side: int = SETTLEMENT_SIDE, replicates: int = EXP4_R
+              ) -> tuple[list[Config], list[None]]:
+    """The §6.2 Experiment 4 grid: 3 f_treat x 3 beta x 5 conditions x R = 9,000 runs.
+
+    One **absolute** `p`, the kappa=2 Experiment 0b threshold + 0.05, resolved
+    once and held fixed across every cell, with `p_rel` null on every row
+    (§6.2, DEC-011): the check asks how outcomes move when beta changes on the
+    *same* landscape, so it must not re-centre per beta.
+    """
+    if not 1 <= replicates <= EXP4_R:
+        raise ValueError(f"replicates must be in 1..{EXP4_R}, got {replicates}")
+    p = resolve_p(EXP4_P_REL, regime="STUDY", condition="none", b=0.0,
+                  kappa=EXP4_KAPPA, path=pc_path)
+    levels = exp4_levels(exp1_path)
+    cfgs, pos = [], 0
+    for f_treat in EXP4_F_TREAT:
+        for beta in EXP4_BETA:
+            for condition, prm, b in levels:
+                for r in range(replicates):
+                    cfgs.append(Config(
+                        L=EXP4_L, regime="STUDY", p=p, f_treat=f_treat,
+                        beta=beta, kappa=EXP4_KAPPA, phi=0.0, tau=1, diagonal_factor=True,
+                        condition=condition, b=b,
+                        geometry_params={**prm, "settlement_side": side},
+                        ignition="random_cell", settlement=True,
+                        seed=EXP4_SEED_BASE + pos * EXP4_R + r,
+                    ))
+                pos += 1
+    return cfgs, [None] * len(cfgs)
+
+
+def _check_exp4_frame(df: pd.DataFrame, n_expected: int, pc_path: str = PC_PATH) -> None:
+    problems = []
+    if len(df) != n_expected:
+        problems.append(f"{len(df)} rows, expected {n_expected}")
+    if df["truncated"].any():
+        problems.append("truncated rows present (§3.7, I10)")
+    if not df["run_id"].is_unique:
+        problems.append("run_id is not unique")
+    if not (df["kappa"] == EXP4_KAPPA).all():
+        problems.append(f"kappa is not {EXP4_KAPPA} on every row")
+    if df["p_rel"].notna().any():
+        problems.append("p_rel must be null on every row (DEC-011)")
+    want = resolve_p(EXP4_P_REL, regime="STUDY", condition="none", b=0.0,
+                     kappa=EXP4_KAPPA, path=pc_path)
+    if not np.allclose(df["p"], want, rtol=0, atol=1e-12):
+        problems.append(f"p is not the single absolute value {want:.4f} on every row")
+    if set(df["f_treat"].round(6)) != set(EXP4_F_TREAT):
+        problems.append(f"f_treat values are {sorted(set(df['f_treat']))}")
+    if set(df["beta"].round(6)) != set(EXP4_BETA):
+        problems.append(f"beta values are {sorted(set(df['beta']))}")
+    cells = df.groupby(["f_treat", "beta"])["condition"].nunique()
+    if len(cells) != len(EXP4_F_TREAT) * len(EXP4_BETA) or cells.min() < 5:
+        problems.append("the f_treat x beta cross is not complete over the condition set")
+    if df["settlement_reached"].isna().any():
+        problems.append("settlement_reached is null on some rows")
+    if problems:
+        raise AssertionError("Experiment 4 frame failed: " + "; ".join(problems))
+
+
+def run_exp4(exp1_path: str = EXP1_PATH, out_path: str = EXP4_PATH, pc_path: str = PC_PATH,
+             side: int = SETTLEMENT_SIDE, replicates: int = EXP4_R) -> pd.DataFrame:
+    """Experiment 4: do the conclusions survive the fixed parameter choices."""
+    cfgs, p_rels = exp4_grid(exp1_path, pc_path, side, replicates)
+    df = run_configs(cfgs, out_path, p_rel=p_rels)
+    df = df[df["run_id"].isin({config_run_id(c) for c in cfgs})]
+    _check_exp4_frame(df, len(cfgs), pc_path)
+    print(f"Experiment 4: {len(df)} rows in {out_path} "
+          f"(f_treat x beta x {len(exp4_levels(exp1_path))} conditions, R={replicates}).")
+    return df
+
+
+# --- I11: lattice frame invariance (SPEC-16, §7 I11, §10.1 D3) ----------------
+
+I11_PATH = "results/i11_frame.parquet"
+I11_PHIS = (0.0, math.pi / 4)
+I11_KAPPA = 2.0
+I11_B = 0.15
+I11_P_REL = 0.05
+I11_L = 256
+I11_R = 200
+I11_SEED_BASE = 8_000_000
+
+
+def i11_grid(exp1_path: str = EXP1_PATH, pc_path: str = PC_PATH,
+             replicates: int = I11_R) -> tuple[list[Config], list[float]]:
+    """`strips_perp` and `strips_para` at phi = 0 and phi = pi/4, R = 200 each.
+
+    The geometry rotates with the wind because the strip generators build bands
+    relative to `phi` (DEC-008), so no separate rotated condition is needed: the
+    same two condition names at a different `phi` *are* the rotated geometry.
+    """
+    if not 1 <= replicates <= I11_R:
+        raise ValueError(f"replicates must be in 1..{I11_R}, got {replicates}")
+    w = exp2_selection(exp1_path)["strips_perp"]["params"]
+    p = resolve_p(I11_P_REL, regime="STUDY", condition="none", b=0.0,
+                  kappa=I11_KAPPA, path=pc_path)
+    cfgs, pos = [], 0
+    for phi in I11_PHIS:
+        for condition in ("strips_perp", "strips_para"):
+            for r in range(replicates):
+                cfgs.append(Config(
+                    L=I11_L, regime="STUDY", p=p, f_treat=0.2,
+                    beta=0.8, kappa=I11_KAPPA, phi=phi, tau=1, diagonal_factor=True,
+                    condition=condition, b=I11_B, geometry_params=dict(w),
+                    ignition="random_cell", settlement=False,
+                    seed=I11_SEED_BASE + pos * I11_R + r,
+                ))
+            pos += 1
+    return cfgs, [I11_P_REL] * len(cfgs)
+
+
+def i11_gaps(df: pd.DataFrame) -> pd.DataFrame:
+    """The `strips_perp` − `strips_para` gap in mean burned fraction at each phi,
+    with a standard error, and whether the two 95% intervals overlap.
+
+    Reports the magnitude either way (SPEC-16 Behaviour): a pass is one line in
+    Methods, a fail is a measured lattice artefact for Limitations.
+    """
+    rows = []
+    for phi, sub in df.groupby("phi"):
+        stats = sub.groupby("condition")["burned_fraction"].agg(["mean", "sem", "size"])
+        gap = float(stats.loc["strips_perp", "mean"] - stats.loc["strips_para", "mean"])
+        se = float(math.hypot(stats.loc["strips_perp", "sem"], stats.loc["strips_para", "sem"]))
+        rows.append({"phi": float(phi), "gap": gap, "gap_stderr": se,
+                     "ci_lo": gap - 1.96 * se, "ci_hi": gap + 1.96 * se,
+                     "n_per_condition": int(stats["size"].min())})
+    out = pd.DataFrame(rows).sort_values("phi").reset_index(drop=True)
+    a, b = out.iloc[0], out.iloc[1]
+    out.attrs["overlap"] = bool(a["ci_lo"] <= b["ci_hi"] and b["ci_lo"] <= a["ci_hi"])
+    out.attrs["difference"] = float(a["gap"] - b["gap"])
+    out.attrs["difference_stderr"] = float(math.hypot(a["gap_stderr"], b["gap_stderr"]))
+    return out
+
+
+def run_i11(exp1_path: str = EXP1_PATH, out_path: str = I11_PATH, pc_path: str = PC_PATH,
+            replicates: int = I11_R) -> pd.DataFrame:
+    cfgs, p_rels = i11_grid(exp1_path, pc_path, replicates)
+    df = run_configs(cfgs, out_path, p_rel=p_rels)
+    df = df[df["run_id"].isin({config_run_id(c) for c in cfgs})]
+    assert_not_truncated(df)
+    gaps = i11_gaps(df)
+    print(f"I11 frame invariance ({len(df)} rows in {out_path}):")
+    print(gaps.round(5).to_string(index=False))
+    print(f"  difference between the two gaps: {gaps.attrs['difference']:+.5f} "
+          f"+/- {gaps.attrs['difference_stderr']:.5f}; "
+          f"95% intervals {'overlap -> frame invariance holds' if gaps.attrs['overlap'] else 'do NOT overlap -> measured lattice artefact'}")
+    return df
