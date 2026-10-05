@@ -1148,3 +1148,38 @@ The machinery itself is sound. The same fitter on the same untreated condition a
 **Context impact.** `project-context.md` §10.2 O4 records the gate outcome (done in this PR). If (B) is adopted, §6.2's Experiment 2b row gains the sub-critical arm.
 
 **Commit.** pending
+
+### DEC-044 — SPEC-16: ownership, the seven Experiment 3 conditions, Experiment 4's reduced set, and the I11 outcome
+
+- **Date:** 2026-10-05
+- **Raised by:** Armaan (SPEC-16)
+- **Spec:** SPEC-16
+- **Type:** ambiguity, plus one reportable finding
+- **Status:** resolved — reviewer to confirm
+
+**Ownership.** SPEC-16 moves from Aaron to Armaan, reviewer Aaron, agreed 2026-10-04 alongside SPEC-13 in exchange for SPEC-06 and SPEC-08.
+
+**The seven Experiment 3 conditions.** §6.2 says "7 conditions at `b` = 0.15" without listing them, and the figure predates §10.1 D2, which expanded the strip conditions from one width to three and took Experiment 1 from 8 condition-levels to 12. The roadmap's §4.4 table is the list the number came from: untreated, `random`, `patches` at `k` ∈ {4, 8, 16}, strips perpendicular, strips parallel, and `buffer`. Dropping the untreated reference from that list leaves exactly **seven treated conditions**, which is what Experiment 3 runs:
+
+`random`, `patches(4)`, `patches(8)`, `patches(16)`, `strips_perp(w*)`, `strips_para(w*)`, `buffer`.
+
+The strip widths are the level Experiment 2's pre-registered rule selected (`w* = 4`, DEC-039), so the orientation contrast is measured at the width the rest of the project uses, and the clustering-scale axis keeps all three `patches` levels. `none` at `b = 0` is carried as an eighth arm at every `kappa`, because the §11 efficiency metric divides by the untreated burned fraction *at the same operating point* and Experiment 1's untreated runs are at a different `kappa` grid. Eight arms × 4 `kappa` × R = 200 = 6,400 runs.
+
+**Experiment 4's reduced condition set.** §6.2 says "reduced condition set" without naming it. Used: `none` at `b = 0`, `random`, `patches(k*)`, `strips_perp(w*)`, `buffer` — the untreated reference plus one level of each family the primary analysis reports, dropping `strips_para` and the extra `patches` scales. Five conditions × 3 `f_treat` × 3 `beta` × R = 200 = 9,000 runs. It is deliberately smaller than Experiment 3: this is a sensitivity check, not a second main experiment. `p` is the single absolute value 0.5504 (the `kappa` = 2 Experiment 0b threshold + 0.05), resolved once and identical on all 9,000 rows, with `p_rel` null throughout (DEC-011).
+
+**Seeds.** Experiment 3 from 6,000,000, I11 from 8,000,000, Experiment 4 from 7,000,000, each laid out by grid position. Clear of Experiments 1 (4.0M), 2 (5.0–6.0M) and 2b (9.0M).
+
+**I11 — the frame-invariance check did not pass, and that was a planned outcome.** Measured at `b` = 0.15, `p_rel` = +0.05, `kappa` = 2, L = 256, R = 200 per cell, no settlement. The gap is mean `burned_fraction` for `strips_perp` minus `strips_para`, so a negative gap means strips across the wind burn less:
+
+| wind | gap | 95% interval |
+|---|---|---|
+| `phi` = 0 (along the lattice axes) | **−0.00884** | [−0.01062, −0.00707] |
+| `phi` = π/4 (diagonal) | **−0.00448** | [−0.00561, −0.00335] |
+
+The intervals do not overlap; the difference is −0.00436 ± 0.00107, about four standard errors. **So part of the orientation advantage is a lattice artefact: the gap is about twice as large when the strips lie along the lattice axes as when they run diagonally.**
+
+Per §10.1 D3, which fixed both outcomes in advance, this goes in **Limitations with its magnitude attached**, not in Methods as a passed check. What survives rotation is the *conclusion*: strips across the wind beat strips along it at both wind angles, significantly in both cases (both intervals lie entirely below zero). What does not survive is the *size* of that advantage, which should not be quoted to more precision than a factor of two. `test_i11_lattice_frame_invariance` asserts the direction and the significance, which hold either way, and reports the magnitude rather than failing — asserting overlap would turn a result D3 planned for into a broken suite.
+
+**Context impact.** none. §7 I11's wording stands; its measured outcome is recorded here and in the test's output.
+
+**Commit.** pending
