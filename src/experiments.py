@@ -1243,9 +1243,71 @@ def _check_exp2_frame(df: pd.DataFrame, n_expected: int, what: str) -> None:
         raise AssertionError(f"Experiment 2 {what} frame failed: " + "; ".join(problems))
 
 
+EXP2_SCALE_PATH = "results/exp2_scale.parquet"
+EXP2_SCALE_COLUMNS = ["regime", "condition", "b", "kappa", "L", "p50", "p50_stderr", "n_per_point"]
+
+
+def p50_rows(df: pd.DataFrame, condition: str) -> list[dict]:
+    """Per-lattice-size 50% spanning points for one condition (DEC-041).
+
+    The fuel density at which P(span) first reaches 1/2 on each L, by linear
+    interpolation between the two sweep points that bracket it, after enforcing
+    monotonicity in p (P(span) is monotone in p; the deviations are sampling
+    noise at R=500). The standard error is propagated from the binomial error on
+    the two bracketing points divided by the local slope.
+
+    This is a descriptive per-L statistic, not an estimate of an infinite-lattice
+    threshold. It exists because a condition whose P(span) curves do not cross
+    across L has no single threshold to record, and the way it moves with L is
+    itself the result (`strips_perp`, DEC-041).
+    """
+    rows = []
+    for L, cell in df.groupby("L"):
+        g = cell.groupby("p")["spanned"].agg(["mean", "size"]).sort_index()
+        ps, frac, n = g.index.to_numpy(float), g["mean"].to_numpy(float), g["size"].to_numpy(float)
+        mono = np.maximum.accumulate(frac)
+        i = int(np.argmax(mono >= 0.5))
+        if mono[i] < 0.5 or i == 0:
+            raise ValueError(
+                f"{condition} at L={L}: P(span) does not cross 1/2 inside the sweep "
+                f"(range {mono[0]:.3f}..{mono[-1]:.3f}); cannot report a 50% point"
+            )
+        lo_p, hi_p, lo_f, hi_f = ps[i - 1], ps[i], mono[i - 1], mono[i]
+        slope = (hi_f - lo_f) / (hi_p - lo_p)
+        p50 = lo_p + (0.5 - lo_f) / slope
+        se_f = math.sqrt(sum(f * (1 - f) / m for f, m in ((lo_f, n[i - 1]), (hi_f, n[i]))))
+        rows.append({
+            "regime": "STUDY", "condition": condition, "b": float(cell["b"].iloc[0]),
+            "kappa": float(cell["kappa"].iloc[0]), "L": int(L),
+            "p50": float(p50), "p50_stderr": float(se_f / slope),
+            "n_per_point": int(n.min()),
+        })
+    return rows
+
+
+def write_p50(rows, path: str = EXP2_SCALE_PATH) -> None:
+    """Append per-L 50% points to `path`, append-only on (condition, b, kappa, L)."""
+    if not rows:
+        return
+    new = pd.DataFrame(list(rows))[EXP2_SCALE_COLUMNS]
+    out_path = Path(path)
+    old = pd.read_parquet(out_path) if out_path.exists() else None
+    key = lambda d: set(map(tuple, d[["regime", "condition", "b", "kappa", "L"]].to_numpy().tolist()))
+    if old is not None:
+        clash = key(old) & key(new)
+        if clash:
+            raise ValueError(f"duplicate per-L rows for {sorted(clash)} in {path}; nothing written")
+        new = pd.concat([old, new], ignore_index=True)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out_path.with_name(out_path.name + ".tmp")
+    new.to_parquet(tmp, index=False)
+    os.replace(tmp, out_path)
+
+
 def run_exp2(exp1_path: str = EXP1_PATH, prepass_path: str = EXP2_PREPASS_PATH,
              out_path: str = EXP2_PATH, pc_path: str = PC_PATH, sizes: Sequence[int] = EXP2_L,
-             replicates: int = EXP2_R, centres: dict[str, float] | None = None) -> pd.DataFrame:
+             replicates: int = EXP2_R, centres: dict[str, float] | None = None,
+             scale_path: str = EXP2_SCALE_PATH) -> pd.DataFrame:
     """Experiment 2: selection, pre-pass, sweep, and per-condition STUDY thresholds.
 
     Writes the pre-pass, centres each condition on it (DEC-040), runs the sweep,
@@ -1254,6 +1316,11 @@ def run_exp2(exp1_path: str = EXP1_PATH, prepass_path: str = EXP2_PREPASS_PATH,
     records no threshold. Every crossing must lie strictly inside its own range,
     and all three are checked before any is written. `centres` overrides the
     pre-pass, for re-centring a condition whose crossing fell outside its range.
+
+    A condition whose P(span) curves have no L-independent crossing has no single
+    threshold to record. Its `fss_crossing` row is omitted - so `resolve_p` refuses
+    it rather than returning a number that does not exist - and its per-L 50%
+    points go to `scale_path` instead (DEC-041).
     """
     levels = exp2_levels(exp1_path)
     print("Experiment 2 conditions: " + ", ".join(f"{c}{_dumps(p) if p else ''}" for c, p in levels))
@@ -1264,28 +1331,46 @@ def run_exp2(exp1_path: str = EXP1_PATH, prepass_path: str = EXP2_PREPASS_PATH,
     print("Experiment 2 sweep centres: " + ", ".join(f"{c}: {centres[c]:.3f}" for c, _ in levels))
 
     cfgs = exp2_grid(levels, centres, sizes, replicates)
-    df = run_configs(cfgs, out_path)
-    df = df[df["run_id"].isin({config_run_id(c) for c in cfgs})]
+    full = run_configs(cfgs, out_path)
+    df = full[full["run_id"].isin({config_run_id(c) for c in cfgs})]
     _check_exp2_frame(df, len(cfgs), "sweep")
 
     if tuple(sorted(sizes)) != EXP2_L or replicates != EXP2_R:
         print(f"Experiment 2 staged run: {len(df)} rows; no p_c recorded (not the full grid).")
         return df
 
-    rows, report = [], []
+    rows, report, scale_rows = [], [], []
     for cond, _ in levels:
-        cond_rows = pc_rows(df[df["condition"] == cond], cond, "STUDY")
-        crossing = next(r for r in cond_rows if r["method"] == "fss_crossing")
+        sub = df[df["condition"] == cond]
         lo = round(centres[cond] - EXP2_HALF_WIDTH, 3)
         hi = round(centres[cond] + EXP2_HALF_WIDTH, 3)
+        try:
+            cond_rows = pc_rows(sub, cond, "STUDY")
+        except ValueError as exc:
+            # No L-independent crossing: the condition's threshold depends on the
+            # lattice size, so there is no single p_c to record (DEC-041, option A).
+            # Its per-L 50% points are written to `scale_path` instead, and no
+            # `fss_crossing` row is written, so `resolve_p` correctly refuses it.
+            if "no valid crossing" not in str(exc):
+                raise
+            scale_rows.extend(p50_rows(full[full["condition"] == cond], cond))
+            report.append(f"{cond}: NO scale-free threshold; per-L 50% points "
+                          "recorded instead (DEC-041)")
+            continue
+        crossing = next(r for r in cond_rows if r["method"] == "fss_crossing")
         if not lo < crossing["p_c"] < hi:
             raise AssertionError(
                 f"{cond}: crossing p_c = {crossing['p_c']:.4f} is not strictly inside its sweep range "
                 f"({lo}, {hi}). Re-centre with `centres=` and rerun that condition; do not extrapolate."
             )
         rows.extend(cond_rows)
+        scale_rows.extend(p50_rows(full[full["condition"] == cond], cond))
         report.append(f"{cond}: centre {centres[cond]:.3f}, p_c = {crossing['p_c']:.4f} ± {crossing['p_c_stderr']:.4f}")
+
+    if not rows:
+        raise AssertionError("Experiment 2 recorded no threshold for any condition; nothing written")
     write_pc_estimates(rows, pc_path)
+    write_p50(scale_rows, scale_path)
     print("Experiment 2: " + "; ".join(report))
     return df
 

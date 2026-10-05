@@ -1,7 +1,7 @@
 ---
 id: SPEC-14
 title: Experiment 2 — threshold shift
-status: blocked
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
@@ -69,18 +69,18 @@ No new interface. Uses `run_configs` (SPEC-05), `pc_rows` and `write_pc_estimate
 
 ## Acceptance criteria
 
-- [ ] The grid builder declares the sweep range, step and point count as explicit constants.
-- [ ] `results/exp2.parquet` exists with `truncated == False` and unique `run_id`.
-- [ ] Every row has `ignition == "edge"`, `settlement == False`, `b == 0.15`, `kappa == 0`, `phi == -π/2`, and `condition != "none"`.
-- [ ] `reached_edge` is null on every row; `spanned` is non-null on every row.
-- [ ] `pc_estimates.parquet` holds exactly one `STUDY` `fss_crossing` row per `(condition, b=0.15, kappa=0)`: one `patches`, one `strips_perp`, one `random`.
-- [ ] For each of the three conditions, `pc_estimates.parquet` gains one `method="fss_crossing"` row with `L` null and three per-`L` `method="var_peak"` rows (SPEC-06 row identity, DEC-004), each with a stderr, and `resolve_p` resolves each condition's key without raising.
-- [ ] Each condition's `P(span)` curve crosses across the three `L` values, and the crossing is inside the swept range — if it is not, the range was wrong and the sweep is rerun, not extrapolated.
-- [ ] The PR body names `k*` and `w*` and the Experiment 1 numbers that selected them under the §6.2 rule.
+- [x] The grid builder declares the sweep range, step and point count as explicit constants.
+- [x] `results/exp2.parquet` exists with `truncated == False` and unique `run_id`.
+- [x] Every row has `ignition == "edge"`, `settlement == False`, `b == 0.15`, `kappa == 0`, `phi == -π/2`, and `condition != "none"`.
+- [x] `reached_edge` is null on every row; `spanned` is non-null on every row.
+- [x] `pc_estimates.parquet` holds exactly one `STUDY` `fss_crossing` row per `(condition, b=0.15, kappa=0)`: one `patches`, one `strips_perp`, one `random`.
+- [x] For each of the three conditions, `pc_estimates.parquet` gains one `method="fss_crossing"` row with `L` null and three per-`L` `method="var_peak"` rows (SPEC-06 row identity, DEC-004), each with a stderr, and `resolve_p` resolves each condition's key without raising.
+- [x] Each condition's `P(span)` curve crosses across the three `L` values, and the crossing is inside the swept range — if it is not, the range was wrong and the sweep is rerun, not extrapolated.
+- [x] The PR body names `k*` and `w*` and the Experiment 1 numbers that selected them under the §6.2 rule.
 
 ## Invariants
 
-- [ ] None owned. I10 must hold over this frame.
+- [x] None owned. I10 must hold over this frame.
 
 ## Verification
 
@@ -98,13 +98,13 @@ PY
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR
+- [x] `status` updated in this file and in `progress-tracker.md`
 - [ ] `results/exp2.parquet` and the updated `pc_estimates.parquet` committed
-- [ ] PR open, linked to the issue — status `in review`
+- [x] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks

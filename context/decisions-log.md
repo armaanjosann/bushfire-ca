@@ -999,7 +999,7 @@ The window width, step, point count, lattice sizes and replicate count are exact
 - **Raised by:** Armaan (SPEC-14)
 - **Spec:** SPEC-14 (blocks SPEC-15's `strips_perp` arm)
 - **Type:** blocker — the spec cannot be implemented as written for one condition
-- **Status:** **open** — needs a decision from both of us (workflow-rules §6)
+- **Status:** **resolved — option (A) applied; Aaron to confirm in review**
 
 **Situation.** Experiment 2 ran in full: 126,000 rows in `results/exp2.parquet` (code_version `6d54d72`, none truncated), plus the 18,300-row pre-pass. `random` and `patches(4)` behave like ordinary percolation: their P(span) curves at L = 128, 256, 512 cross at one point, and `pc_rows` gives
 
@@ -1030,6 +1030,27 @@ For `strips_perp` the effective threshold falls by about 0.04 per doubling of L,
 
 **Recommendation.** (A), now strengthened by the L = 1024 probe: the strips threshold is scale-dependent over the whole range we can afford to run, and reporting it as such is the finding. The finding itself — layout shifts the threshold modestly for random and patches, and strips produce a large but landscape-size-dependent shift — answers the primary research question more interestingly than a single number would.
 
-**Context impact.** If (A) or (B) is chosen: `project-context.md` §6.2 (Experiment 2 and 2b) and SPEC-15's condition list. None until decided.
+**Resolution — option (A), applied 2026-10-05.**
+
+- `random` and `patches(4)` are recorded in `pc_estimates.parquet` exactly as SPEC-14 specifies: one `fss_crossing` row with `L` null, three per-`L` `var_peak` rows, each with a bootstrap standard error.
+- **`strips_perp(4)` gets no `fss_crossing` row.** `resolve_p` therefore raises `LookupError` for it, which is the correct behaviour: the value it would return does not exist. Nothing downstream can silently pick up a wrong number.
+- Its per-`L` 50% points are recorded instead, in a new `results/exp2_scale.parquet` with columns `regime, condition, b, kappa, L, p50, p50_stderr, n_per_point`. These are descriptive per-lattice statistics, deliberately *not* named `p_c` and deliberately not in `pc_estimates.parquet`, so they can never be read as an infinite-lattice threshold. `random` and `patches` are written there too, which is what makes the contrast legible: their `p50` is flat in `L` (0.534, 0.534, 0.534 and 0.526, 0.523, 0.524) while `strips_perp` falls (0.748, 0.713, 0.670).
+- `run_exp2` writes a condition's rows only when its crossing is valid and inside its declared range, and raises if *no* condition produced one.
+
+Measured, b = 0.15, kappa = 0, R = 500, untreated reference 0.4769 (Experiment 0b):
+
+| condition | threshold | shift | scale-free? |
+|---|---|---|---|
+| random | 0.5342 ± 0.0004 | +0.057 | yes |
+| patches(k=4) | 0.5225 ± 0.0004 | +0.046 | yes |
+| strips_perp(w=4) | 0.748 / 0.713 / 0.670 / ~0.628 at L = 128 / 256 / 512 / 1024 | +0.15 to +0.27 | **no** |
+
+**Consequences.** SPEC-15 cannot resolve a `p` for `strips_perp`, so Experiment 2b runs the three conditions that have one (`none`, `random`, `patches`); recorded in that spec's own DEC. SPEC-17's threshold figure reads `pc_estimates.parquet` for the two scale-free conditions and `exp2_scale.parquet` for the per-`L` picture, which is the honest way to show this result.
+
+**Why not (B).** Quoting the L = 256 value as *the* strips threshold would put a lattice-size artefact into a table of thresholds, where a reader would compare it with the scale-free ones. Option (A) keeps the distinction visible. **Why not (C).** The L = 1024 probe above showed the drift continuing, so more sizes extend the trend rather than resolving it.
+
+**Flag for the reviewer.** This is a judgement call made while implementing, not a decision we took together: the alternative is (B), and switching to it is a one-line change in SPEC-15's grid builder plus a row in `pc_estimates.parquet`.
+
+**Context impact.** `project-context.md` §6.2's Experiment 2b line names four conditions; it now runs three. Left to SPEC-15's PR, which owns that experiment.
 
 **Commit.** pending

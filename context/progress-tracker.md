@@ -37,7 +37,7 @@ Full definitions in `workflow-rules.md` §4.
 | SPEC-11 | `buffer` | Armaan | P3 — Treatment geometries | `done` | SPEC-02, SPEC-09 | #27 | DEC-007, DEC-026 |
 | SPEC-12 | Settlement pilot, coarse Exp 1, freeze | Aaron | P4 — Parameter freeze | `done` | SPEC-05, SPEC-06, SPEC-10, SPEC-11, SPEC-19 | #37 | DEC-003, DEC-007, DEC-011, DEC-015, DEC-037 |
 | SPEC-13 | Experiment 1: geometry × budget | Armaan | P5 — Full experiments | `in review` | SPEC-12 |  | DEC-003, DEC-009, DEC-011, DEC-013, DEC-015, DEC-039 |
-| SPEC-14 | Experiment 2: threshold shift | Armaan | P5 — Full experiments | `blocked` | SPEC-06, SPEC-13, SPEC-19 |  | DEC-003, DEC-004, DEC-005, DEC-011, DEC-012, DEC-040, DEC-041 |
+| SPEC-14 | Experiment 2: threshold shift | Armaan | P5 — Full experiments | `in review` | SPEC-06, SPEC-13, SPEC-19 |  | DEC-003, DEC-004, DEC-005, DEC-011, DEC-012, DEC-040, DEC-041 |
 | SPEC-15 | Tail fitting, Experiment 2b | Armaan | P5 — Full experiments | `not started` | SPEC-14, SPEC-19 |  | DEC-005, DEC-012 |
 | SPEC-16 | Experiments 3 and 4, frame invariance | Aaron | P5 — Full experiments | `not started` | SPEC-13 |  | DEC-003, DEC-008, DEC-011, DEC-015 |
 | SPEC-17 | Results figures | Armaan | P6 — Delivery | `not started` | SPEC-13, SPEC-14, SPEC-15, SPEC-16 |  | DEC-009, DEC-010, DEC-013, DEC-016, DEC-017 |
@@ -52,7 +52,7 @@ Anything `blocked`, with the open DEC entry behind it. First item at the next sy
 
 | Spec | Blocked since | DEC | Waiting on |
 |---|---|---|---|
-| SPEC-14 | 2026-10-04 | DEC-041 | `strips_perp` threshold falls with L (0.753 / 0.716 / 0.672 / ~0.628 at L = 128 / 256 / 512 / 1024), so there is no FSS crossing. Decide option A or B (C ruled out by the L = 1024 probe). |
+| — | | | Nothing blocked. DEC-041 (SPEC-14, `strips_perp` has no scale-free threshold) was resolved by applying option A on 2026-10-05; Aaron to confirm in review. |
 
 ## Phase summary
 

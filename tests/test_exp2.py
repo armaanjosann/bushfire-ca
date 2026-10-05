@@ -129,3 +129,78 @@ def test_staged_run_end_to_end_records_nothing(tmp_path, monkeypatch):
                               pc_path=str(pc), sizes=(128,), replicates=2)
     assert len(df) == 3 * 21 * 2 and not pc.exists()
     assert df["spanned"].notna().all() and df["reached_edge"].isna().all()
+
+
+# --- per-L 50% points, for a condition with no scale-free threshold (DEC-041) ---
+
+
+from src.experiments import EXP2_SCALE_COLUMNS, p50_rows, write_p50  # noqa: E402
+
+
+def _sweep_frame(p50_by_L, *, condition="strips_perp", n=500, width=0.02):
+    """A sweep whose P(span) is a logistic centred at `p50_by_L[L]` for each L."""
+    rows = []
+    for L, centre in p50_by_L.items():
+        for p in np.round(np.arange(centre - 0.05, centre + 0.0501, 0.005), 4):
+            k = int(round(n / (1 + np.exp(-(p - centre) / width))))
+            rows += [{"condition": condition, "b": 0.15, "kappa": 0.0, "L": L, "p": p,
+                      "spanned": i < k, "truncated": False} for i in range(n)]
+    return pd.DataFrame(rows)
+
+
+def test_p50_rows_recovers_each_lattice_sizes_midpoint():
+    want = {128: 0.75, 256: 0.71, 512: 0.67}
+    rows = p50_rows(_sweep_frame(want), "strips_perp")
+    assert {r["L"] for r in rows} == set(want)
+    for r in rows:
+        assert abs(r["p50"] - want[r["L"]]) < 0.002
+        assert 0 < r["p50_stderr"] < 0.01
+        assert (r["regime"], r["condition"], r["b"], r["kappa"]) == ("STUDY", "strips_perp", 0.15, 0.0)
+        assert r["n_per_point"] == 500
+
+
+def test_p50_rows_refuses_a_sweep_that_never_reaches_half():
+    df = _sweep_frame({128: 0.95})          # centred far above its own window
+    df = df[df["p"] < 0.92]
+    with pytest.raises(ValueError, match="does not cross 1/2"):
+        p50_rows(df, "strips_perp")
+
+
+def test_p50_rows_is_robust_to_sampling_noise():
+    # a curve with a small non-monotone dip must still give a sensible midpoint
+    df = _sweep_frame({256: 0.60})
+    dip = (df["p"] == 0.595) & (df.groupby("p").cumcount() < 60)
+    df.loc[dip, "spanned"] = ~df.loc[dip, "spanned"]
+    assert abs(p50_rows(df, "strips_perp")[0]["p50"] - 0.60) < 0.005
+
+
+def test_write_p50_is_append_only(tmp_path):
+    path = tmp_path / "scale.parquet"
+    write_p50(p50_rows(_sweep_frame({128: 0.75, 256: 0.71}), "strips_perp"), path)
+    assert list(pd.read_parquet(path).columns) == EXP2_SCALE_COLUMNS
+    write_p50(p50_rows(_sweep_frame({128: 0.53}, condition="random"), "random"), path)
+    assert len(pd.read_parquet(path)) == 3
+    with pytest.raises(ValueError, match="duplicate"):
+        write_p50(p50_rows(_sweep_frame({128: 0.53}, condition="random"), "random"), path)
+    assert len(pd.read_parquet(path)) == 3        # nothing written on the clash
+    write_p50([], path)                            # no rows is a no-op
+
+
+def test_run_exp2_records_what_crosses_and_refuses_what_does_not():
+    """The committed Experiment 2 result (DEC-041, option A): random and patches
+    have a threshold, strips_perp has only per-L points, and `resolve_p` refuses
+    the condition that has none rather than inventing a value."""
+    from src.analysis import resolve_p
+
+    pc = pd.read_parquet("results/pc_estimates.parquet")
+    study = pc[(pc.regime == "STUDY") & (pc.b == 0.15) & (pc.method == "fss_crossing")]
+    assert set(study.condition) == {"random", "patches"}
+    assert resolve_p(0.0, regime="STUDY", condition="random", b=0.15, kappa=0.0) > 0.5
+    with pytest.raises(LookupError):
+        resolve_p(0.0, regime="STUDY", condition="strips_perp", b=0.15, kappa=0.0)
+
+    scale = pd.read_parquet("results/exp2_scale.parquet")
+    strips = scale[scale.condition == "strips_perp"].sort_values("L")
+    assert list(strips.L) == [128, 256, 512]
+    assert strips.p50.is_monotonic_decreasing          # the finding: it falls with L
+    assert strips.p50.min() > 0.6                      # and stays far above untreated 0.477
