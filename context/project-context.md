@@ -481,6 +481,14 @@ Cost is ~8 core-hours, about 35 minutes across 16 cores, so Experiment 2b is sch
 
 What remains open at the gate is only the replicate count. If the fits show `x_min` sitting so high that fewer than ~2 decades of tail survive above it, raise R to 50,000 for the two headline conditions and narrow the condition set accordingly. Record the outcome here.
 
+**Gate outcome, recorded 2026-10-05 (DEC-042, DEC-043).** Experiment 2b ran at R = 10,000 over **three** conditions, not four: `strips_perp` has no scale-free threshold (DEC-041), so there is no `p` to run it at and it was excluded rather than substituted.
+
+**The replicate count stays at R = 10,000.** Every fit spans at least two decades above `x_min` (4.41, 2.00 and 2.09 for `none`, `random` and `patches`), so the condition the gate was written to detect did not occur and its remedy does not apply.
+
+A different problem did occur, and it is not one more replicates would fix. **At each condition's own critical point the power-law-with-exponential-cutoff model is rejected**: the KS distance is about eight times its 5% critical value for all three conditions. On a finite lattice the critical point is exactly where a spanning pile-up dominates — 33% of untreated fires burn more than 10,000 of 65,536 cells — so the distribution is a shallow power law followed by a peak, which no monotonically decaying model represents. The fitter itself is sound: on the same condition at fuel densities below the threshold it fits well, and the fitted cutoff grows as the critical point is approached (269, 648, 2,867 at `p_c` − 0.06, − 0.04, − 0.02), which is the expected critical scaling.
+
+Consequently **no fitted exponent or cutoff from Experiment 2b may be reported as a measured value**, and the stored fits carry `fit_rejected` so this cannot be overlooked. What SQ3 can be answered with from this run is the measured distributions themselves, which do differ between conditions (two-sample KS separates every pair). Whether to add a sub-critical arm, where the fit is valid, is open in DEC-043.
+
 ## 11. Glossary
 
 | Term | Meaning here |

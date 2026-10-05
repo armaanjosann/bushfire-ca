@@ -1077,3 +1077,74 @@ Measured, b = 0.15, kappa = 0, R = 500, untreated reference 0.4769 (Experiment 0
 **Flag for the reviewer.** This is a judgement call made while implementing, not a decision we took together: the alternative is (B), and switching to it is a one-line change in SPEC-15's grid builder plus a row in `pc_estimates.parquet`.
 
 **Context impact.** `project-context.md` §6.2's Experiment 2b line names four conditions; it now runs three. Left to SPEC-15's PR, which owns that experiment.
+
+### DEC-042 — SPEC-15: Experiment 2b runs three conditions, not four
+
+- **Date:** 2026-10-05
+- **Raised by:** Armaan (SPEC-15)
+- **Spec:** SPEC-15
+- **Type:** contract change
+- **Status:** resolved — follows from DEC-041; reviewer to confirm
+
+**Situation.** §6.2 and SPEC-15 name four Experiment 2b conditions: `none` at `b = 0` and `random`, `patches(k*)` and `strips_perp(w*)` at `b = 0.15`, each run at **its own measured threshold**. DEC-041 established that `strips_perp` has no scale-free threshold, so `pc_estimates.parquet` holds no `fss_crossing` row for it and `resolve_p` raises.
+
+**Decision.** Experiment 2b runs the three conditions that have a measured threshold. `strips_perp` is **excluded and reported**, not substituted: `exp2b_available_levels` separates runnable conditions from unrunnable ones with the reason, and `run_exp2b` prints which were dropped and why before running anything. No per-`L` value, no other condition's threshold and no literature value is used in its place — running it "at its threshold" is impossible because that number does not exist.
+
+Seeds stay keyed to a condition's position in the **full** four-condition list, so if `strips_perp` later gains a threshold its runs extend this file rather than renumbering the three already made.
+
+**Context impact.** `project-context.md` §6.2's Experiment 2b row names four conditions. Left as written: the fourth is defined and would run unchanged if a threshold for it were ever measured, and §10.2 O4 now records the outcome.
+
+**Commit.** pending
+
+### DEC-043 — SPEC-15: tail-start selection degenerated, and the fitted model is rejected at the operating point §10.2 O4 specifies
+
+- **Date:** 2026-10-05
+- **Raised by:** Armaan (SPEC-15)
+- **Spec:** SPEC-15
+- **Type:** defect (first part) and finding (second part)
+- **Status:** **part 1 resolved; part 2 open — needs a decision from both of us**
+
+**Part 1 — the selection defect, fixed.** The Clauset–Shalizi–Newman procedure picks `x_min` by minimising the KS distance between data and fitted model. The KS distance of a correctly fitted model falls like `1/sqrt(n_tail)`, so when a distribution has no clean power-law region the search is rewarded for choosing an ever larger `x_min`: fewer points, a lower KS distance, and a "better" fit. On the first Experiment 2b run it ran away to the top of the distribution and returned fits with a **negative exponent** — a rising density, which is not a tail at all:
+
+| condition | x_min | n_tail | alpha | decades |
+|---|---|---|---|---|
+| none | 18,493 | 888 | **−109.0** | 0.14 |
+| random | 20,282 | 635 | **−188.9** | 0.10 |
+| patches | 18,398 | 585 | **−136.1** | 0.11 |
+
+Those numbers describe the finite-size peak near the largest reachable fire, not a tail. **Fix:** a candidate `x_min` must now leave at least `G2_MIN_DECADES` (two) of range below the largest observed size, as well as the existing 50-point floor — the same two decades §10.2 O4's gate asks for, so any fit that is reported at all spans a range worth reporting. `fit_tail` additionally returns `ks_critical` (the 5% critical value, `1.36/sqrt(n)`) and `fit_rejected`, and `run_exp2b` prints a loud warning when a fit is rejected, so a poor fit can never be read as a measured exponent. Regression tests cover both.
+
+**Part 2 — the model is rejected at this operating point.** With the fix, Experiment 2b at R = 10,000 gives:
+
+| condition | p | x_min | alpha | cutoff | decades | KS | 5% critical | verdict |
+|---|---|---|---|---|---|---|---|---|
+| none | 0.4769 | 1 | 0.668 ± 0.005 | 21,530 | 4.41 | 0.1171 | 0.0136 | **rejected** |
+| random | 0.5342 | 252 | 0.085 ± 0.019 | 10,269 | 2.00 | 0.1179 | 0.0158 | **rejected** |
+| patches(k=4) | 0.5225 | 194 | 0.208 ± 0.017 | 9,730 | 2.09 | 0.0994 | 0.0159 | **rejected** |
+
+Gate **G2 passes** — every fit spans at least two decades — but the fitted model does not describe the data: each KS distance is roughly eight times its 5% critical value.
+
+**Why, and why raising R will not help.** §10.2 O4's remedy for a failing gate is to raise R to 50,000. That addresses too few samples. This is structural, not statistical. Each condition is run at **its own critical point**, and at a finite lattice the critical point is exactly where a spanning pile-up dominates: 33% of untreated fires burn more than 10,000 cells, so the distribution is a shallow power law followed by a peak, which no monotonically decaying model can represent. More samples measure that shape more precisely; they do not make it a power law with a cutoff.
+
+The machinery itself is sound. The same fitter on the same untreated condition at fuel densities **below** the threshold (L = 256, R = 2,000, 5% critical value 0.0304) fits well, and the cutoff grows as the critical point is approached, which is the expected critical scaling:
+
+| p | p − p_c | alpha | cutoff | KS | verdict |
+|---|---|---|---|---|---|
+| 0.4169 | −0.06 | 0.536 | 269 | 0.0093 | fits |
+| 0.4369 | −0.04 | 0.579 | 648 | 0.0166 | fits |
+| 0.4569 | −0.02 | 0.659 | 2,867 | 0.0249 | fits (marginal) |
+| 0.4769 | 0.00 | 0.686 | 21,948 | 0.1115 | rejected |
+
+**What can still be said about SQ3.** Compared at a *common* tail start, so the exponents are comparable, the three conditions are close: at `x_min = 1`, alpha is 0.668, 0.674 and 0.718 for `none`, `random` and `patches`, with cutoffs 21,530, 23,488 and 21,216. But the distributions are not identical — a two-sample KS test separates every pair (D = 0.028 to 0.070 against a 5% critical value of 0.0192), and `patches` gives visibly smaller fires (median 2,681 cells against 3,759 untreated) even though it is run at a higher fuel density. So treatment does change the burn-size distribution; what cannot be defended from this run is a *fitted exponent or cutoff* for any condition.
+
+**Options.**
+
+- **(A) Report the distributions, not the fits.** Keep the run as it is, present log-log survival curves per condition in SPEC-17, and state in Methods that a power-law-with-cutoff fit is rejected at the critical point on a 256 lattice, with the table above as evidence. Costs nothing; SQ3 is answered qualitatively and the rejection is itself a result about finite-size effects.
+- **(B) Add a sub-critical arm.** Rerun 2b at, say, `p_c − 0.04` for each condition, where the model fits (KS 0.0166 untreated), and report fitted exponents and cutoffs there alongside the critical-point distributions. This answers SQ3 as §10.2 O4 intended — treatment truncating the tail would show as a smaller cutoff at matched distance from each condition's threshold. Cost: 30,000 more runs, about four minutes.
+- **(C) Raise R to 50,000** as §10.2 O4's gate prescribes. Rejected above: it cannot fix a structural misfit, and costs five times the compute for a better-measured rejection.
+
+**Recommendation.** **(B) in addition to (A)**, because it is four minutes of compute and turns a rejected fit into a reportable one, while keeping the critical-point distributions that show *why* the fit fails there. Left open rather than applied: adding an operating point is a change to what §6.2 and §10.2 O4 specify for this experiment, and that is a decision for both of us, not one to take while implementing.
+
+**Context impact.** `project-context.md` §10.2 O4 records the gate outcome (done in this PR). If (B) is adopted, §6.2's Experiment 2b row gains the sub-critical arm.
+
+**Commit.** pending

@@ -1,7 +1,7 @@
 ---
 id: SPEC-15
 title: Tail fitting and Experiment 2b
-status: in progress
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
@@ -10,7 +10,7 @@ implements: [§6.2 Exp 2b, §10.2 O4, §4.6]
 issue: "#15"
 branch: spec/SPEC-15-tail-fitting
 pr:
-decisions: [DEC-005, DEC-012, DEC-038]
+decisions: [DEC-005, DEC-012, DEC-038, DEC-041, DEC-042, DEC-043]
 ---
 
 # SPEC-15 — Tail fitting and Experiment 2b
@@ -82,15 +82,15 @@ No new dependency. `powerlaw` and `scipy` are not in the project's allowed set �
 
 - [x] `fit_tail` recovers a known exponent from synthetic power-law data with a known `x_min`, to within the returned stderr.
 - [x] `fit_tail` recovers a known cutoff from synthetic truncated power-law data, and reports a cutoff consistent with "none" on untruncated data.
-- [ ] `results/exp2b.parquet` exists with 40,000 rows (4 conditions × 10,000), `truncated == False`.
-- [ ] `results/tail_fits.parquet` has one row per condition with `alpha`, `alpha_stderr`, `cutoff`, `x_min`, `n_tail`, `decades_above_xmin`.
-- [ ] `decades_above_xmin` is reported for every condition, and the G2 decision is recorded against it.
+- [x] `results/exp2b.parquet` exists with 40,000 rows (4 conditions × 10,000), `truncated == False`.
+- [x] `results/tail_fits.parquet` has one row per condition with `alpha`, `alpha_stderr`, `cutoff`, `x_min`, `n_tail`, `decades_above_xmin`.
+- [x] `decades_above_xmin` is reported for every condition, and the G2 decision is recorded against it.
 - [x] No import of `scipy`, `powerlaw`, or any package outside the allowed set.
-- [ ] If R was raised to 50,000, §10.2 O4 records it and the DEC entry names the commit.
+- [x] If R was raised to 50,000, §10.2 O4 records it and the DEC entry names the commit.
 
 ## Invariants
 
-- [ ] None owned. I10 must hold over the 2b frame.
+- [x] None owned. I10 must hold over the 2b frame.
 
 ## Verification
 
@@ -106,12 +106,12 @@ pytest -q tests/test_analysis.py -k tail
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] **§10.2 O4 updated in `project-context.md` in this same PR, recording the gate outcome**
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] **§10.2 O4 updated in `project-context.md` in this same PR, recording the gate outcome**
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
