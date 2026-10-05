@@ -1,13 +1,13 @@
 ---
 id: SPEC-17
 title: Results figures
-status: not started
+status: in progress
 owner: Armaan
 reviewer: Aaron
 phase: P6 — Delivery (Sprint 3 → 4)
 depends_on: [SPEC-13, SPEC-14, SPEC-15, SPEC-16]
 implements: [§9, §11, §10.1 D5]
-issue:
+issue: [#17](https://github.com/armaanjosann/bushfire-ca/issues/17)
 branch: spec/SPEC-17-results-figures
 pr:
 decisions: [DEC-009, DEC-010, DEC-013, DEC-016, DEC-017]
