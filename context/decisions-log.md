@@ -1183,3 +1183,22 @@ Per §10.1 D3, which fixed both outcomes in advance, this goes in **Limitations 
 **Context impact.** none. §7 I11's wording stands; its measured outcome is recorded here and in the test's output.
 
 **Commit.** pending
+
+### DEC-045 — SPEC-17: how the figures present the two results that are not single numbers
+
+- **Date:** 2026-10-05
+- **Raised by:** Armaan (SPEC-17)
+- **Spec:** SPEC-17
+- **Type:** ambiguity
+- **Status:** resolved — reviewer to confirm
+
+SPEC-17 lists the figures to build but was written before two results turned out not to be single numbers. Both are presented so that a reader cannot take a value the data do not support.
+
+- **Threshold shift (DEC-041).** `random` and `patches(4)` are drawn as a point with a 95% interval from their finite-size-scaling crossing. `strips_perp(4)` has no crossing, so it is drawn as its three per-`L` 50% points joined by a line, each labelled with its lattice size, on a row labelled "no scale-free value". The untreated baseline is a dashed rule across the panel. No `PERCOLATION` value appears, per §10.1 D5.
+- **Burn-size distributions (DEC-043).** Survival curves per condition with the fitted model dashed over them, plus a box on the figure stating that the fit is rejected and why. A reader who takes only the figure cannot come away with an exponent.
+
+Other choices: one colour per condition family, lightened by clustering scale so the three levels of a family are distinguishable without a second colour axis; `random` is drawn as the scale-1 point of every family line in the clustering-scale figure, because that is what makes §11's axis a continuum rather than three separate series; `buffer` is never placed on that axis, being the targeted condition; and every panel showing a treated condition is labelled with the **realised** treated fraction. The cell-state codes the scar figures colour by are literals in `make_figures.py`, since the module imports nothing from `src/`; a test asserts they still equal the model's.
+
+**Context impact.** none
+
+**Commit.** pending
