@@ -9,8 +9,8 @@ Read and run them in numeric order.
 | # | Notebook | Prerequisite commands (from the repository root) |
 |---|---|---|
 | 01 | `01-model-and-validation.ipynb` — the model, a live demonstration, the invariant suite, the Experiment 0 validation | `python run.py --exp 0` |
-| 02 | `02-treatment-geometries.ipynb` — geometry, budget and the settlement question (SPEC-21) | the experiments it reads, per SPEC-21 |
-| 03 | `03-thresholds-and-tails.ipynb` — threshold shift, tail fits, sensitivity (SPEC-21) | the experiments it reads, per SPEC-21 |
+| 02 | `02-treatment-geometries.ipynb` — what the arrangements look like, the clustering-scale axis, efficiency, the settlement trade-off, illustrative scars | `python run.py --exp 1` and `--exp scars` |
+| 03 | `03-thresholds-and-tails.ipynb` — threshold shift, burn-size distributions, wind interaction, sensitivity, frame invariance, limitations | `python run.py --exp 0b`, `--exp 2`, `--exp 2b`, `--exp 3`, `--exp i11`, `--exp 4` |
 
 `python run.py --exp all` produces everything the three notebooks read.
 
@@ -27,6 +27,7 @@ Then open a notebook and choose *Restart & Run All*. The notebooks locate the re
 ## Conventions
 
 - **Every notebook is committed with its outputs stored** (DEC-017), executed top to bottom with execution counts running 1, 2, 3, … and no out-of-order cells, so a reader sees the analysis without running anything. This is an exception to the rule against committing generated figures, scoped to `notebooks/*.ipynb`; `figures/out/` stays gitignored.
+- **Each notebook begins with `%matplotlib inline`.** The builders construct a `Figure` directly rather than through `pyplot`, so without it a figure cell renders as `<Figure ...>` instead of the image, and the committed notebook would store no picture.
 - **Figures come from the registry**: `from figures.make_figures import FIGURES`, then `FIGURES["name"]()`. A builder returns a figure and writes nothing to disk. A figure that is not registered is added to the registry (SPEC-08, SPEC-17), not drawn by hand in a notebook.
 - **`run_fire` appears in notebook 01 only, in exactly one cell** (DEC-018): a seeded live demonstration at `L <= 128`, labelled as a demonstration and feeding no reported quantity. Notebooks 02 and 03 never call it.
 - **Regenerate before committing.** After a change, re-execute in place so the stored outputs match the code:
