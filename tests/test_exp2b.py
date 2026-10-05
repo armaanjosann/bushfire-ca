@@ -20,6 +20,7 @@ from src.experiments import (
     EXP2B_R_RAISED,
     EXP2B_SEED_BASE,
     config_run_id,
+    exp2b_available_levels,
     exp2b_grid,
     exp2b_levels,
 )
@@ -81,12 +82,44 @@ def test_grid_shape_and_fixed_settings(inputs):
     assert len({config_run_id(c) for c in cfgs}) == len(cfgs)
 
 
-def test_grid_has_no_fallback_threshold(tmp_path):
+def test_a_condition_without_a_threshold_is_dropped_never_substituted(tmp_path):
+    """DEC-041/042: a condition whose threshold could not be measured is excluded
+    and reported, and no other condition's p is used in its place."""
     exp2, pc = tmp_path / "exp2.parquet", tmp_path / "pc.parquet"
     _write_exp2(exp2)
     _write_pc(pc, skip=("strips_perp",))
-    with pytest.raises(LookupError):
+
+    runnable, dropped = exp2b_available_levels(str(exp2), str(pc))
+    assert [c for c, _, _ in runnable] == ["none", "random", "patches"]
+    assert dropped == [("strips_perp", "LookupError")]
+
+    cfgs, _ = exp2b_grid(str(exp2), str(pc), replicates=3)
+    assert {c.condition for c in cfgs} == {"none", "random", "patches"}
+    for c in cfgs:
+        assert c.p == pytest.approx(P_C[(c.condition, c.b)])
+
+
+def test_grid_raises_when_no_condition_has_a_threshold(tmp_path):
+    exp2, pc = tmp_path / "exp2.parquet", tmp_path / "pc.parquet"
+    _write_exp2(exp2)
+    # a valid pc file that holds no row any Experiment 2b condition could use
+    write_pc_estimates([{"regime": "PERCOLATION", "condition": "none", "b": 0.0, "kappa": 0.0,
+                         "L": None, "p_c": 0.4064, "p_c_stderr": 0.0005, "method": "fss_crossing"}], pc)
+    with pytest.raises(LookupError, match="no Experiment 2b condition"):
         exp2b_grid(str(exp2), str(pc), replicates=3)
+
+
+def test_seeds_are_tied_to_the_full_condition_list(tmp_path):
+    """A dropped condition must not shift the others' seed streams, so a later
+    run that includes it reproduces the runs made today."""
+    exp2, pc_all, pc_some = tmp_path / "exp2.parquet", tmp_path / "all.parquet", tmp_path / "some.parquet"
+    _write_exp2(exp2)
+    _write_pc(pc_all)
+    _write_pc(pc_some, skip=("strips_perp",))
+    seeds = lambda pc: {(c.condition, c.seed) for c in exp2b_grid(str(exp2), str(pc), replicates=4)[0]}
+    partial = seeds(pc_some)
+    assert partial <= seeds(pc_all)
+    assert {c for c, _ in partial} == {"none", "random", "patches"}
 
 
 def test_g2_escalation_extends_the_same_runs(inputs):

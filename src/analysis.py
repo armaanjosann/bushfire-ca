@@ -529,7 +529,8 @@ TAIL_FIT_FIELDS = [
     "x_min", "x_max", "n", "n_tail", "max_size", "decades_above_xmin",
     "alpha", "alpha_stderr", "cutoff", "cutoff_lo", "cutoff_hi",
     "cutoff_rate", "cutoff_rate_stderr",
-    "alpha_pl", "alpha_pl_stderr", "cutoff_llr", "cutoff_p_value", "ks_distance",
+    "alpha_pl", "alpha_pl_stderr", "cutoff_llr", "cutoff_p_value",
+    "ks_distance", "ks_critical", "fit_rejected",
 ]
 TAIL_KEY = ["experiment", "condition", "geometry_params", "b", "replicates"]
 TAIL_COLUMNS = TAIL_KEY + ["p", "kappa", "L"] + TAIL_FIT_FIELDS
@@ -646,11 +647,25 @@ def _ks(tail_sorted: np.ndarray, pmf: np.ndarray, x_min: int) -> float:
 
 
 def _candidates(sizes_sorted: np.ndarray) -> np.ndarray:
-    """Distinct values that leave at least TAIL_MIN_N points at or above them,
-    thinned to at most TAIL_MAX_CANDIDATES, log-spaced, keeping the smallest."""
+    """Distinct values a tail may start at, thinned to at most
+    TAIL_MAX_CANDIDATES, log-spaced, keeping the smallest.
+
+    A candidate must leave at least TAIL_MIN_N points at or above it **and** at
+    least `G2_MIN_DECADES` of range below the largest observed size. The range
+    floor is what stops the selection degenerating (DEC-043): the KS distance of
+    a fitted model falls with the number of points it is fitted to, so without
+    it the search always drifts to a sliver at the very top of the distribution,
+    where any shape fits well and the fitted "tail" describes a finite-size peak
+    rather than a tail. The floor is the same two decades §10.2 O4's gate asks
+    for, so a fit that is reported at all spans a range worth reporting.
+    """
     vals = np.unique(sizes_sorted)
     n_at_or_above = sizes_sorted.size - np.searchsorted(sizes_sorted, vals, side="left")
-    vals = vals[n_at_or_above >= TAIL_MIN_N]
+    enough_points = n_at_or_above >= TAIL_MIN_N
+    enough_range = vals <= sizes_sorted[-1] / 10.0 ** G2_MIN_DECADES
+    vals = vals[enough_points & enough_range]
+    if vals.size == 0:                      # a distribution too narrow for any tail
+        vals = np.unique(sizes_sorted)[:1]
     if vals.size > TAIL_MAX_CANDIDATES:
         idx = np.unique(np.round(np.geomspace(1, vals.size, TAIL_MAX_CANDIDATES)).astype(int) - 1)
         vals = vals[idx]
@@ -666,6 +681,7 @@ def _fit_at(sizes_sorted: np.ndarray, x_min: int, x_max: int) -> dict:
     alpha_pl, alpha_pl_se, ll_pl = _fit_pl(sup, n, s_log)
     alpha, lam, cov, ll = _fit_tpl(sup, n, s_log, s_x, alpha_pl, ll_pl)
     pmf = _moments(sup, alpha, lam)[3]
+    _ks_value = _ks(tail, pmf, x_min)
     llr = max(2.0 * (ll - ll_pl), 0.0)
     # The cutoff is reported as 1/lam with a 1-sigma interval from inverting
     # lam ± se(lam). se(lam) is well calibrated; a delta-method se on 1/lam is
@@ -684,11 +700,13 @@ def _fit_at(sizes_sorted: np.ndarray, x_min: int, x_max: int) -> dict:
         "cutoff": float(cutoff), "cutoff_lo": float(cutoff_lo), "cutoff_hi": float(cutoff_hi),
         "cutoff_rate": float(lam), "cutoff_rate_stderr": float(lam_se),
         "alpha_pl": float(alpha_pl), "alpha_pl_stderr": float(alpha_pl_se),
+        "ks_critical": 1.36 / math.sqrt(n),     # KS 5% critical value at this n
+        "fit_rejected": float(_ks_value > 1.36 / math.sqrt(n)),
         "cutoff_llr": float(llr),
         # lam = 0 is on the boundary of the parameter space, so the null
         # distribution of the LR statistic is ½χ²₀ + ½χ²₁ (Self & Liang 1987)
         "cutoff_p_value": 0.5 * math.erfc(math.sqrt(llr / 2.0)) if llr > 0 else 1.0,
-        "ks_distance": _ks(tail, pmf, x_min),
+        "ks_distance": _ks_value,
     }
 
 

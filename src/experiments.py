@@ -1420,6 +1420,29 @@ def exp2b_levels(exp2_path: str = EXP2_PATH) -> list[tuple[str, dict, float]]:
     return levels
 
 
+def exp2b_available_levels(exp2_path: str = EXP2_PATH, pc_path: str = PC_PATH
+                           ) -> tuple[list[tuple[str, dict, float]], list[tuple[str, str]]]:
+    """Split `exp2b_levels` into the conditions that have a measured threshold and
+    those that do not, with the reason (DEC-042).
+
+    Experiment 2b runs each condition at its own `fss_crossing` value. A condition
+    whose P(span) curves have no L-independent crossing has no such row, so
+    `resolve_p` raises and the condition cannot be run at "its threshold" — there
+    is no single value to run it at (`strips_perp`, DEC-041). It is reported here
+    rather than skipped quietly, and it is never substituted with another
+    condition's threshold or with a per-L value.
+    """
+    runnable, dropped = [], []
+    for condition, prm, b in exp2b_levels(exp2_path):
+        try:
+            resolve_p(0.0, regime="STUDY", condition=condition, b=b, kappa=EXP2B_KAPPA, path=pc_path)
+        except (LookupError, FileNotFoundError) as exc:
+            dropped.append((condition, type(exc).__name__))
+            continue
+        runnable.append((condition, prm, b))
+    return runnable, dropped
+
+
 def exp2b_grid(exp2_path: str = EXP2_PATH, pc_path: str = PC_PATH, replicates: int = EXP2B_R,
                conditions: Sequence[str] | None = None, size: int = EXP2B_L
                ) -> tuple[list[Config], list[float]]:
@@ -1439,14 +1462,18 @@ def exp2b_grid(exp2_path: str = EXP2_PATH, pc_path: str = PC_PATH, replicates: i
     """
     if not 1 <= replicates <= EXP2B_R_RAISED:
         raise ValueError(f"replicates must be in 1..{EXP2B_R_RAISED}, got {replicates}")
-    levels = exp2b_levels(exp2_path)
+    levels, _ = exp2b_available_levels(exp2_path, pc_path)
+    if not levels:
+        raise LookupError("no Experiment 2b condition has a measured threshold; run Experiment 2 first")
     names = [c for c, _, _ in levels]
     if conditions is not None:
         unknown = [c for c in conditions if c not in names]
         if unknown:
             raise ValueError(f"unknown Experiment 2b conditions {unknown}; valid: {names}")
+    all_names = [c for c, _, _ in exp2b_levels(exp2_path)]
     cfgs, p_rels = [], []
-    for i, (condition, prm, b) in enumerate(levels):
+    for condition, prm, b in levels:
+        i = all_names.index(condition)      # position in the full list, not the runnable one
         if conditions is not None and condition not in conditions:
             continue
         p = resolve_p(0.0, regime="STUDY", condition=condition, b=b, kappa=EXP2B_KAPPA, path=pc_path)
@@ -1511,6 +1538,10 @@ def run_exp2b(exp2_path: str = EXP2_PATH, pc_path: str = PC_PATH, out_path: str 
     in `run_exp0`. Gate G2 is printed, not acted on: raising R is a team
     decision recorded in §10.2 O4 (SPEC-15 Behaviour). Returns the fits.
     """
+    runnable, dropped = exp2b_available_levels(exp2_path, pc_path)
+    for condition, why in dropped:
+        print(f"Experiment 2b: {condition!r} has no measured threshold ({why}), so it is not run. "
+              "Its tail is not fitted and no substitute p is used (DEC-041, DEC-042).")
     cfgs, p_rels = exp2b_grid(exp2_path, pc_path, replicates, conditions, size)
     df = run_configs(cfgs, out_path, p_rel=p_rels)
     df = df[df["run_id"].isin({config_run_id(c) for c in cfgs})]   # this request's rows only
@@ -1519,14 +1550,23 @@ def run_exp2b(exp2_path: str = EXP2_PATH, pc_path: str = PC_PATH, out_path: str 
     fits = pd.DataFrame(exp2b_fits(df, replicates))
     full = size == EXP2B_L and (
         (replicates == EXP2B_R and conditions is None) or replicates == EXP2B_R_RAISED)
+    if full and conditions is None and len(runnable) < len(exp2b_levels(exp2_path)):
+        print(f"Experiment 2b full run over the {len(runnable)} conditions with a threshold.")
     if full:
         write_tail_fits(fits, fits_path)
     else:
         print(f"Experiment 2b staged run (R={replicates}, L={size}): no fits recorded.")
 
     show = ["condition", "geometry_params", "p", "x_min", "n_tail", "alpha", "alpha_stderr",
-            "cutoff", "cutoff_lo", "cutoff_hi", "cutoff_p_value", "decades_above_xmin"]
+            "cutoff", "cutoff_lo", "cutoff_hi", "decades_above_xmin",
+            "ks_distance", "ks_critical", "fit_rejected"]
     print(fits[show].round(4).to_string(index=False))
+    bad = fits[fits["fit_rejected"] > 0]
+    if not bad.empty:
+        print(f"\nGOODNESS OF FIT: the power-law-with-cutoff model is REJECTED for "
+              f"{', '.join(bad['condition'])} (KS distance above its 5% critical value). "
+              "The fitted exponent and cutoff describe the data poorly and must not be "
+              "reported as if they did; see DEC-043.")
     gate = g2_gate(fits)
     print("Gate G2 (>= 2 decades of tail above x_min, §10.2 O4):")
     print(gate.to_string(index=False))

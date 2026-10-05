@@ -583,3 +583,55 @@ def test_write_tail_fits_requires_every_column(tmp_path):
     del row["alpha"]
     with pytest.raises(ValueError, match="missing"):
         write_tail_fits([row], tmp_path / "t.parquet")
+
+
+# --- the tail selection must not degenerate, and must own up to a bad fit ------
+
+
+def test_tail_selection_refuses_a_sliver_at_the_top(tmp_path):
+    """DEC-043: a model fitted to few points scores a low KS distance by chance,
+    so an unguarded search drifts to the very top of the distribution and
+    "fits" a finite-size peak, returning a rising density (alpha < 0). The
+    candidate range floor stops that."""
+    rng = np.random.default_rng(11)
+    # a shallow power law plus a pronounced bump at the top, like a burn-size
+    # distribution at its critical point on a finite lattice
+    body = tail_sample(rng, 6000, 1.1, 1, x_max=20000)
+    bump = rng.integers(16000, 20000, size=4000)
+    s = np.concatenate([body, bump])
+
+    f = fit_tail(s, x_max=TAIL_X_MAX)
+    assert f["alpha"] > 0, "a tail fit must describe a falling density"
+    assert f["decades_above_xmin"] >= G2_MIN_DECADES
+    assert f["x_min"] <= s.max() / 10 ** G2_MIN_DECADES
+
+
+def test_tail_reports_goodness_of_fit():
+    rng = np.random.default_rng(12)
+    good = fit_tail(tail_sample(rng, 5000, 2.0, 5, cutoff=3000), x_max=TAIL_X_MAX, x_min=5)
+    assert good["ks_distance"] < good["ks_critical"]
+    assert good["fit_rejected"] == 0
+
+    # a distribution the model cannot describe: a narrow bump, no tail at all
+    bump = np.concatenate([rng.integers(9000, 11000, size=5000), rng.integers(1, 50, size=5000)])
+    bad = fit_tail(bump, x_max=TAIL_X_MAX)
+    assert bad["ks_distance"] > bad["ks_critical"]
+    assert bad["fit_rejected"] == 1
+
+
+def test_ks_critical_is_the_standard_five_percent_value():
+    f = fit_tail(tail_sample(np.random.default_rng(13), 4000, 2.0, 5), x_max=TAIL_X_MAX, x_min=5)
+    assert f["ks_critical"] == pytest.approx(1.36 / np.sqrt(f["n"]))
+
+
+def test_committed_experiment_2b_fits_are_recorded_as_rejected():
+    """The committed Experiment 2b result (DEC-043): at each condition's own
+    threshold the power-law-with-cutoff model does not describe the data, and
+    the stored fits say so rather than presenting an exponent as measured."""
+    fits = pd.read_parquet(Path("results/tail_fits.parquet"))
+    assert set(fits["condition"]) == {"none", "random", "patches"}
+    assert (fits["replicates"] == 10_000).all()
+    assert (fits["decades_above_xmin"] >= G2_MIN_DECADES).all()      # gate G2 passes
+    assert (fits["alpha"] > 0).all()                                  # falling density
+    assert (fits["fit_rejected"] == 1).all()                          # but the model is rejected
+    assert (fits["ks_distance"] > fits["ks_critical"]).all()
