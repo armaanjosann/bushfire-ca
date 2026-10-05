@@ -1,13 +1,13 @@
 ---
 id: SPEC-21
 title: Results notebooks — geometries, thresholds and tails
-status: not started
+status: in progress
 owner: Armaan
 reviewer: Aaron
 phase: P6 — Delivery (Sprint 4)
 depends_on: [SPEC-17, SPEC-20]
 implements: [§9, §11]
-issue:
+issue: [#29](https://github.com/armaanjosann/bushfire-ca/issues/29)
 branch: spec/SPEC-21-results-notebooks
 pr:
 decisions: [DEC-016, DEC-017]
