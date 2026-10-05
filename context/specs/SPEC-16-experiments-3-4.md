@@ -1,13 +1,13 @@
 ---
 id: SPEC-16
 title: Experiments 3 and 4, and the lattice frame-invariance check
-status: not started
-owner: Aaron
-reviewer: Armaan
+status: in progress
+owner: Armaan
+reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
 depends_on: [SPEC-13]
 implements: [§6.2 Exp 3, §6.2 Exp 4, §10.1 D3, §7 I11]
-issue:
+issue: [#16](https://github.com/armaanjosann/bushfire-ca/issues/16)
 branch: spec/SPEC-16-experiments-3-4
 pr:
 decisions: [DEC-003, DEC-008, DEC-011, DEC-015]
