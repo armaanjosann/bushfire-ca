@@ -1202,3 +1202,22 @@ Other choices: one colour per condition family, lightened by clustering scale so
 **Context impact.** none
 
 **Commit.** pending
+
+### DEC-046 — SPEC-21: the results notebooks report two results that have no single number
+
+- **Date:** 2026-10-05
+- **Raised by:** Armaan (SPEC-21)
+- **Spec:** SPEC-21
+- **Type:** ambiguity
+- **Status:** resolved — reviewer to confirm
+
+SPEC-21 asks each notebook to present "the threshold shift per condition with confidence intervals" and "burn-size distributions with fitted exponent **and** cutoff". Neither exists for every condition, so both are presented as what was actually measured, with the reason stated in prose next to the figure:
+
+- **Notebook 03 §1** gives `random` and `patches(4)` as thresholds with intervals, and `strips_perp` as its per-lattice 50% points with the mechanism that produces them (a strip is breached if the fire finds any weak point along it, so doubling the lattice doubles the chances while the spacing stays fixed). No single value is quoted for it (DEC-041).
+- **Notebook 03 §2** gives the distributions and states that the fitted model is rejected, why more replicates cannot fix it, and that the fitter is sound below the critical point. SQ3 is answered by comparing distributions rather than by quoting exponents (DEC-043).
+
+Other choices: the geometry gallery in notebook 02 draws at a denser fuel bed (0.75) on a smaller lattice (96) than the experiments use, labelled as such, because treatment marks only fuel cells and at experiment densities a 16-cell block reads as a dotted square rather than a block; the settlement timing table is shown beside the reach probability with the right-censoring spelled out (DEC-037), since the fastest median times belong to the arrangements that almost nothing gets through; and both notebooks open with `%matplotlib inline`, without which a registry `Figure` renders as a repr and the committed notebook stores no image.
+
+**Context impact.** none
+
+**Commit.** pending
