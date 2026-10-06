@@ -1,16 +1,16 @@
 ---
 id: SPEC-17
 title: Results figures
-status: not started
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P6 — Delivery (Sprint 3 → 4)
 depends_on: [SPEC-13, SPEC-14, SPEC-15, SPEC-16]
 implements: [§9, §11, §10.1 D5]
-issue:
+issue: [#17](https://github.com/armaanjosann/bushfire-ca/issues/17)
 branch: spec/SPEC-17-results-figures
 pr:
-decisions: [DEC-009, DEC-010, DEC-013, DEC-016, DEC-017]
+decisions: [DEC-009, DEC-010, DEC-013, DEC-016, DEC-017, DEC-041, DEC-043, DEC-045, DEC-047]
 ---
 
 # SPEC-17 — Results figures
@@ -73,19 +73,19 @@ As SPEC-08's registry — register new builders in `FIGURES`, do not redesign th
 
 ## Acceptance criteria
 
-- [ ] `python figures/make_figures.py --all` builds every registered figure and exits 0.
-- [ ] `grep -nE "run_fire|capture_scar" figures/make_figures.py` returns nothing.
-- [ ] Every figure has a caption string beside its builder.
-- [ ] No figure places a `PERCOLATION` `p_c` alongside a `STUDY` `p_c`.
-- [ ] The efficiency figure divides by `n_treated / n_cells`, verified by reading the code.
-- [ ] The SQ4 figure plots both response variables for every condition, so the trade-off is visible or its absence is.
-- [ ] The scar figure and the space-time view both read `results/scars_illustrative.npz`, and raise a clear error if it or its `ignition_step` arrays are missing.
-- [ ] Re-running `--all` twice produces byte-identical **figure files** (notebook files excluded, DEC-017).
-- [ ] A test asserts every registered builder is callable and every one that the report cites is registered.
+- [x] `python figures/make_figures.py --all` builds every registered figure and exits 0.
+- [x] `grep -nE "run_fire|capture_scar" figures/make_figures.py` returns nothing.
+- [x] Every figure has a caption string beside its builder.
+- [x] No figure places a `PERCOLATION` `p_c` alongside a `STUDY` `p_c`.
+- [x] The efficiency figure divides by `n_treated / n_cells`, verified by reading the code.
+- [x] The SQ4 figure plots both response variables for every condition, so the trade-off is visible or its absence is.
+- [x] The scar figure and the space-time view both read `results/scars_illustrative.npz`, and raise a clear error if it or its `ignition_step` arrays are missing.
+- [x] Re-running `--all` twice produces byte-identical **figure files** (notebook files excluded, DEC-017).
+- [x] A test asserts every registered builder is callable and every one that the report cites is registered.
 
 ## Invariants
 
-- [ ] None owned. All eleven must still pass in the full suite at this point.
+- [x] None owned. All eleven must still pass in the full suite at this point.
 
 ## Verification
 
@@ -98,13 +98,13 @@ ls -la figures/out/ results/scars_illustrative.npz
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] `figures/out/` **not** committed
-- [ ] PR open, linked to the issue — status `in review`
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] `figures/out/` **not** committed
+- [x] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks

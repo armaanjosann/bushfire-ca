@@ -925,3 +925,340 @@ No side lies in [0.3, 0.8] at either `kappa`, so the result does not depend on w
 **Context impact.** `project-context.md` §3.6 (`SETTLEMENT_SIDE` frozen at 16, marker removed) and §10.2 O1 (resolution recorded, SQ4 metric changed to `settlement_reached_step`). Only O4 remains open in §10.
 
 **Commit.** pending
+
+### DEC-038 — SPEC-15: the tail model, its support, the cutoff interval, and the 2b grid
+
+- **Date:** 2026-10-04
+- **Raised by:** Armaan (SPEC-15)
+- **Spec:** SPEC-15
+- **Type:** ambiguity
+- **Status:** resolved — reviewer to confirm
+
+**Situation.** SPEC-15 fixes the method (Clauset–Shalizi–Newman maximum likelihood, `x_min` by KS distance, exponent reported with a cutoff) but not the model's support, which model `x_min` is selected under, how the cutoff's uncertainty is reported, or several details of the 2b grid. It also lists `depends_on: [SPEC-14, SPEC-19]`, and SPEC-14 has not started.
+
+**Decision.**
+
+- **Finite discrete support.** Both models are fitted as discrete distributions on `{x_min, ..., x_max}` with `x_max = L*L`, because a burn size is a count of cells and cannot exceed the lattice. The normalising constant is then a finite sum, the fit is exact maximum likelihood with numpy alone (no Hurwitz zeta, no continuous approximation), and the finite-size bound is in the model rather than misread as a cutoff. `fit_tail` takes `x_max` and `x_min` as optional keyword arguments, additive to the SPEC-15 contract; without `x_max` it uses 100 × the largest observed size.
+- **Cutoff model.** `p(x) ∝ x^(-alpha) · exp(-lambda·x)` with `lambda ≥ 0`, reported as `cutoff = 1/lambda` (`inf` when `lambda = 0`). Both models are exponential families in `(ln x, x)`, so the log-likelihood is concave and a projected Newton method converges from the pure-power-law start.
+- **`x_min` is selected under the cutoff model**, not the pure power law. The reported model is the cutoff model (SPEC-15 Behaviour), and selecting under the pure power law pushes `x_min` up whenever the data are truncated, discarding exactly the tail the cutoff is meant to describe. Candidates are the distinct sizes leaving at least 50 tail points, at most 200 of them, log-spaced.
+- **Cutoff uncertainty is an interval, not a stderr.** On synthetic data the stderr of `lambda` is well calibrated (z-scores sd 0.94–1.01 at n = 4,000–50,000), but a delta-method stderr on `1/lambda` was not (z-score sd ≈ 2 at n = 10,000), because `1/lambda` is strongly skewed whenever `lambda` is poorly determined. `fit_tail` therefore reports `cutoff_lo`, `cutoff_hi` = `1/(lambda ± se)`, with `cutoff_hi = inf` when `lambda − se ≤ 0`, plus `cutoff_rate` and `cutoff_rate_stderr`. 1-sigma coverage of the true cutoff over 40 samples: 0.72.
+- **Cutoff test.** `cutoff_p_value` is the likelihood-ratio test of cutoff against none, using the ½χ²₀ + ½χ²₁ null because `lambda = 0` is on the boundary (Self & Liang 1987). False detections at 5%: 4/40 on untruncated data.
+- **"Recovers a known exponent to within the returned stderr"** is tested as calibration: within 1 stderr in 50–90% of 40 independent samples (measured 0.75), not on one seed, since an honest 1-sigma error bar misses about a third of the time.
+- **2b grid.** Seed of condition `i`, replicate `r` is `9,000,000 + i·50,000 + r`, so a G2 escalation to R = 50,000 contains the 10,000-run set and resumes into the same file. `p_rel = 0.0` on every row: each condition runs at its own measured threshold, which §6.2 and §10.2 O4 name as 2b's reference in place of the governing untreated one. `k*` and `w*` are read from `results/exp2.parquet` at `b = 0.15` and must be unique per family (DEC-012).
+- **Gate G2 reports, it does not act.** `run_exp2b` prints `decades_above_xmin` per condition against the 2-decade threshold. Raising R is a team decision recorded in §10.2 O4, run as `run_exp2b(replicates=50_000, conditions=[...])`. Fits are recorded only for a full run (L = 256 at R = 10,000 for all four conditions, or R = 50,000 for any subset); anything else is staged and records nothing. `tail_fits.parquet` is append-only, keyed by (experiment, condition, geometry_params, b, replicates), so a 50,000-run fit sits beside the 10,000-run one.
+- **Process.** Implemented ahead of SPEC-14, which `depends_on` lists and which has not started. Everything that does not need Experiment 2's data is done and tested; `run.py --exp 2b` raises a clear `FileNotFoundError` until `results/exp2.parquet` exists. The run itself, `results/exp2b.parquet`, `results/tail_fits.parquet`, the G2 outcome and the §10.2 O4 update remain, so SPEC-15 stays `in progress`. Tests live in `tests/test_analysis.py` and a new `tests/test_exp2b.py`, which the spec's verification block uses but its may-touch list omits.
+
+**Context impact.** none yet. §10.2 O4 is updated when the gate is applied.
+
+**Commit.** pending
+### DEC-039 — SPEC-13: ownership, the Experiment 2 selection rule recorded before the run, and the illustrative scars
+
+- **Date:** 2026-10-04
+- **Raised by:** Armaan (SPEC-13)
+- **Spec:** SPEC-13 (and SPEC-14)
+- **Type:** ambiguity
+- **Status:** resolved — reviewer to confirm
+
+**Ownership.** SPEC-13 moves from Aaron to Armaan, reviewer Aaron, agreed between us on 2026-10-04 in exchange for SPEC-06 and SPEC-08, which Aaron implemented for the Checkpoint 2 notebook.
+
+**Experiment 2 selection rule, recorded here before `results/exp1.parquet` exists** (SPEC-13 acceptance; §6.2; DEC-012), unchanged:
+
+> "Best" means the lowest mean `burned_fraction` in Experiment 1 at `b = 0.15`, `p_rel = +0.05`, `kappa = 0`. It is chosen separately among the three `patches` levels (`k ∈ {4, 8, 16}`) and among the three `strips_perp` levels (`w ∈ {4, 8, 16}`). `random` is always included. Experiment 2 measures exactly one level per family.
+
+This commit precedes the commit that adds `results/exp1.parquet`, so the rule is fixed in history before the data it is applied to.
+
+**Choices the spec left open.**
+
+- *Seeds.* Seed = `4,000,000 + position·200 + replicate`, position in (kappa, p, condition-level, b) order, so a staged run at fewer replicates resumes into the full run with the same `run_id`s. Clear of the other experiments' seed ranges.
+- *Wind direction.* `phi = 0` (wind towards +x, east) on every run, as in the coarse run (SPEC-12) and the `Config` default; §6.2 does not state it. With `phi = 0`, `strips_perp` bands are columns (across the wind) and `strips_para` bands are rows (along it). The Experiment 0b thresholds were measured at `phi = −π/2`, which equals `phi = 0` for untreated fuel by the §6.1 rotation symmetry. Check in the data: at kappa = 0, where direction cannot matter, `strips_perp(8)` and `strips_para(8)` give 0.0592 ± 0.0027 and 0.0576 ± 0.0026 at p_c + 0.05 (z = −0.4).
+- *Operating points.* `p_rel ∈ {−0.05, 0, +0.05}` resolve against Experiment 0b at the matching kappa (0.4769 and 0.5004 for kappa 0 and 2); `p = 0.70` carries `p_rel = null`. The frame check recomputes every resolved `p` and fails if any differs, which catches the §2 O4 failure mode (a PERCOLATION or wrong-kappa threshold) that the spec names as the most likely silent error.
+- *Illustrative scars (DEC-009).* Eight configs, replicate 0 of these Experiment 1 points, all at `p_rel = +0.05`: kappa 0 with `none` and `strips_perp(w=8)` at b = 0.15; kappa 2 with `none`, then `random`, `patches(k=8)`, `strips_perp(w=8)`, `strips_para(w=8)` and `buffer` at b = 0.15. They are picked out of `exp1_grid` itself, so every scar has a matching row in `exp1.parquet` with the same `run_id`. The npz keys are `<run_id>__scar`, `<run_id>__ignition_step`, `<run_id>__config` (canonical JSON) and `run_ids`. SPEC-17 may want a different set; changing `SCAR_LEVELS` and rerunning `run.py --exp scars` (seconds) is all it takes.
+- *Run entry.* `run.py --exp scars` is placed right after `1`, so `--exp all` captures scars after the sweep.
+- *Tests.* `tests/test_exp1.py` is new. SPEC-13's may-touch list omits tests; the spec's acceptance criteria need them.
+- *Compute.* Measured from the coarse run at 83 ms per run, the full 107,200-run grid is about 2.5 core-hours, roughly 11× below §6.3's 28-core-hour estimate. That is an undershoot, not the overshoot the spec warns about; the bounding box is doing its job.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-040 — SPEC-14: each condition's sweep is centred on its own pre-pass, not on the untreated threshold
+
+- **Date:** 2026-10-04
+- **Raised by:** Armaan (SPEC-14)
+- **Spec:** SPEC-14
+- **Type:** deviation
+- **Status:** resolved — reviewer to confirm
+
+**Situation.** SPEC-14 centres every condition's 21-point sweep on the untreated `kappa = 0` threshold, 0.4769 ± 0.05, and says that if a crossing falls outside, "shift that condition's range and rerun it". A quick L = 128 check (80 runs per point, b = 0.15, edge ignition, `phi = −π/2`) put P(span) = 0.5 at about 0.53 for `random`, 0.52 for `patches(4)` and 0.76 for `strips_perp(4)`. All three sit at or beyond the top of the declared window (0.527), so following the spec literally would run the full sweep once, fail the in-range check for every condition, and run it again. At L = 512 that is the expensive half of the experiment.
+
+**Decision.** Shift each range *before* the sweep rather than after it, using the same two-step procedure SPEC-19 uses for Experiment 0b:
+
+- **Pre-pass:** L = 128, R = 100, `p ∈ [0.40, 1.00]` step 0.01, per condition, written to `results/exp2_prepass.parquet`. The range runs to p = 1 because a strip layout can move the threshold far above the untreated one, which is the effect under test.
+- **Centre:** the smallest pre-pass `p` with P(span) ≥ 0.5, rounded to 0.005, per condition (the SPEC-19 rule). The build raises if P(span) never reaches 0.5 by p = 1, if it already has at p = 0.40, or if the sweep would run past p = 1.
+- **Sweep:** unchanged from the spec and declared as constants — centre ± 0.05 at step 0.005 (21 points), L ∈ {128, 256, 512}, R = 500. The in-range check on every crossing still applies, and `run_exp2(centres=...)` re-centres one condition by hand if needed.
+
+The window width, step, point count, lattice sizes and replicate count are exactly the spec's; only the centre moves, which the spec already allows.
+
+**Selection (§6.2 rule, recorded in DEC-039 before Experiment 1 ran).** Mean `burned_fraction` at b = 0.15, p_c + 0.05, kappa = 0, R = 200:
+
+| family | level | mean |
+|---|---|---|
+| patches | **k = 4** | **0.1231** |
+| patches | k = 8 | 0.2105 |
+| patches | k = 16 | 0.2479 |
+| strips_perp | **w = 4** | **0.0186** |
+| strips_perp | w = 8 | 0.0592 |
+| strips_perp | w = 16 | 0.1150 |
+
+**Other choices.** Seeds: pre-pass from 5,000,000, sweep from 6,000,000, each laid out by position so a staged run resumes into the full one. `phi = −π/2`, so `strips_perp` bands run across the spanning direction (§6.1). Tests are in a new `tests/test_exp2.py`, which the may-touch list omits.
+
+**Risk to watch.** Under `strips_perp`, the number of bands a fire must cross grows with L at fixed spacing, so P(span) at fixed `p` may fall with L rather than steepen around a fixed point. If the three curves do not cross inside the range, `pc_rows` or the in-range check raises and nothing is written; that outcome is itself a finding and goes in a new DEC, not into an extrapolated number.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-041 — SPEC-14: `strips_perp` has no finite-size-scaling crossing; its threshold falls with L
+
+- **Date:** 2026-10-04
+- **Raised by:** Armaan (SPEC-14)
+- **Spec:** SPEC-14 (blocks SPEC-15's `strips_perp` arm)
+- **Type:** blocker — the spec cannot be implemented as written for one condition
+- **Status:** **resolved — option (A) applied; Aaron to confirm in review**
+
+**Situation.** Experiment 2 ran in full: 126,000 rows in `results/exp2.parquet` (code_version `6d54d72`, none truncated), plus the 18,300-row pre-pass. `random` and `patches(4)` behave like ordinary percolation: their P(span) curves at L = 128, 256, 512 cross at one point, and `pc_rows` gives
+
+| condition | FSS crossing p_c | untreated (0b, kappa 0) | shift |
+|---|---|---|---|
+| random | 0.5342 ± 0.0004 | 0.4769 | +0.057 |
+| patches(k=4) | 0.5225 ± 0.0004 | 0.4769 | +0.046 |
+
+`strips_perp(w=4)` does not. Its sweep was run twice: centred on 0.750 from the L = 128 pre-pass (DEC-040), then re-centred by hand on 0.650 after the first sweep showed P(span) increasing with L at every point in the window. Both times `pc_rows` raised "no valid crossing". The data show why. The p at which P(span) first reaches 0.5, read from the measured curves (both windows, 0.60–0.80, R = 500):
+
+| condition | L = 128 | L = 256 | L = 512 |
+|---|---|---|---|
+| random | 0.534 | 0.534 | 0.534 |
+| patches(4) | 0.526 | 0.524 | 0.524 |
+| **strips_perp(4)** | **0.753** | **0.716** | **0.672** |
+
+For `strips_perp` the effective threshold falls by about 0.04 per doubling of L, with no sign of settling between 128 and 512. There is no L-independent crossing for finite-size scaling to find, so the estimator is right to refuse, and nothing has been written to `pc_estimates.parquet` for any of the three conditions (`run_exp2` checks all before writing any).
+
+**Interpretation.** At b = 0.15 and w = 4 the bands are about 27 cells apart, so L = 128 holds only about 5 of them. A band stops an edge fire only if the front fails to breach it anywhere along its length; a wider lattice gives the front more independent chances to breach, which lowers the effective threshold as L grows. The band spacing is a fixed length scale, so the usual finite-size-scaling assumption (one diverging length) does not hold until L is much larger than the spacing. Whether the threshold converges to a value above the untreated 0.477 — a genuine shift of the critical point — or keeps falling towards the `random`-like value is exactly the primary research question for this layout, and the data in hand do not settle it. A probe at L = 1024 is running to see whether the drift continues; its result will be appended here.
+
+**Options.**
+
+- **(A) Record what is valid and report strips as scale-dependent.** Write the `random` and `patches` rows now (one `fss_crossing` + three `var_peak` each, SPEC-06 identity). For `strips_perp`, write no `fss_crossing` row; report the per-L 50% points above in the report and figures as the finding — the threshold shift under strips is finite-size, decreasing with landscape size relative to band spacing. SPEC-15 runs 2b for `none`, `random` and `patches` and drops or redefines its `strips_perp` arm.
+- **(B) As (A), plus give SPEC-15 an L = 256 strips value.** Experiment 2b runs at L = 256, so the operationally relevant threshold for its strips runs is the L = 256 one (0.716). This needs a new `pc_estimates` row type or a constant in the 2b builder, i.e. a contract change to §4.6 or SPEC-15.
+- **(C) Add L = 1024 (and possibly 2048) to the strips sweep** and see whether a crossing appears. Cost at L = 1024 is about 4× L = 512 per run; 21 points × 500 replicates is roughly 30 core-hours, two hours on 15 cores, before knowing whether it helps.
+
+**L = 1024 probe (added same day; exploratory, R = 80 per point, not committed data).** P(span) for `strips_perp(4)` at L = 1024: 0.00, 0.05, 0.35, 0.74, 0.96, 0.95 at p = 0.58, 0.60, 0.62, 0.64, 0.66, 0.68, so the 50% point is about **0.628**. The sequence is 0.753, 0.716, 0.672, 0.628 for L = 128, 256, 512, 1024: a steady fall of about 0.04 per doubling, with no sign of levelling off. Adding L = 1024 to the sweep (option C) would therefore extend the trend, not produce a crossing, so (C) is not worth its two hours before submission. The transition is also visibly sharp at L = 1024 (0.05 to 0.96 across 0.06 in p), so at any fixed landscape size strips do produce a well-defined, high threshold; it is the landscape size that sets where it sits.
+
+**Recommendation.** (A), now strengthened by the L = 1024 probe: the strips threshold is scale-dependent over the whole range we can afford to run, and reporting it as such is the finding. The finding itself — layout shifts the threshold modestly for random and patches, and strips produce a large but landscape-size-dependent shift — answers the primary research question more interestingly than a single number would.
+
+**Resolution — option (A), applied 2026-10-05.**
+
+- `random` and `patches(4)` are recorded in `pc_estimates.parquet` exactly as SPEC-14 specifies: one `fss_crossing` row with `L` null, three per-`L` `var_peak` rows, each with a bootstrap standard error.
+- **`strips_perp(4)` gets no `fss_crossing` row.** `resolve_p` therefore raises `LookupError` for it, which is the correct behaviour: the value it would return does not exist. Nothing downstream can silently pick up a wrong number.
+- Its per-`L` 50% points are recorded instead, in a new `results/exp2_scale.parquet` with columns `regime, condition, b, kappa, L, p50, p50_stderr, n_per_point`. These are descriptive per-lattice statistics, deliberately *not* named `p_c` and deliberately not in `pc_estimates.parquet`, so they can never be read as an infinite-lattice threshold. `random` and `patches` are written there too, which is what makes the contrast legible: their `p50` is flat in `L` (0.534, 0.534, 0.534 and 0.526, 0.523, 0.524) while `strips_perp` falls (0.748, 0.713, 0.670).
+- `run_exp2` writes a condition's rows only when its crossing is valid and inside its declared range, and raises if *no* condition produced one.
+
+Measured, b = 0.15, kappa = 0, R = 500, untreated reference 0.4769 (Experiment 0b):
+
+| condition | threshold | shift | scale-free? |
+|---|---|---|---|
+| random | 0.5342 ± 0.0004 | +0.057 | yes |
+| patches(k=4) | 0.5225 ± 0.0004 | +0.046 | yes |
+| strips_perp(w=4) | 0.748 / 0.713 / 0.670 / ~0.628 at L = 128 / 256 / 512 / 1024 | +0.15 to +0.27 | **no** |
+
+**Consequences.** SPEC-15 cannot resolve a `p` for `strips_perp`, so Experiment 2b runs the three conditions that have one (`none`, `random`, `patches`); recorded in that spec's own DEC. SPEC-17's threshold figure reads `pc_estimates.parquet` for the two scale-free conditions and `exp2_scale.parquet` for the per-`L` picture, which is the honest way to show this result.
+
+**Why not (B).** Quoting the L = 256 value as *the* strips threshold would put a lattice-size artefact into a table of thresholds, where a reader would compare it with the scale-free ones. Option (A) keeps the distinction visible. **Why not (C).** The L = 1024 probe above showed the drift continuing, so more sizes extend the trend rather than resolving it.
+
+**Flag for the reviewer.** This is a judgement call made while implementing, not a decision we took together: the alternative is (B), and switching to it is a one-line change in SPEC-15's grid builder plus a row in `pc_estimates.parquet`.
+
+**Context impact.** `project-context.md` §6.2's Experiment 2b line names four conditions; it now runs three. Left to SPEC-15's PR, which owns that experiment.
+
+### DEC-042 — SPEC-15: Experiment 2b runs three conditions, not four
+
+- **Date:** 2026-10-05
+- **Raised by:** Armaan (SPEC-15)
+- **Spec:** SPEC-15
+- **Type:** contract change
+- **Status:** resolved — follows from DEC-041; reviewer to confirm
+
+**Situation.** §6.2 and SPEC-15 name four Experiment 2b conditions: `none` at `b = 0` and `random`, `patches(k*)` and `strips_perp(w*)` at `b = 0.15`, each run at **its own measured threshold**. DEC-041 established that `strips_perp` has no scale-free threshold, so `pc_estimates.parquet` holds no `fss_crossing` row for it and `resolve_p` raises.
+
+**Decision.** Experiment 2b runs the three conditions that have a measured threshold. `strips_perp` is **excluded and reported**, not substituted: `exp2b_available_levels` separates runnable conditions from unrunnable ones with the reason, and `run_exp2b` prints which were dropped and why before running anything. No per-`L` value, no other condition's threshold and no literature value is used in its place — running it "at its threshold" is impossible because that number does not exist.
+
+Seeds stay keyed to a condition's position in the **full** four-condition list, so if `strips_perp` later gains a threshold its runs extend this file rather than renumbering the three already made.
+
+**Context impact.** `project-context.md` §6.2's Experiment 2b row names four conditions. Left as written: the fourth is defined and would run unchanged if a threshold for it were ever measured, and §10.2 O4 now records the outcome.
+
+**Commit.** pending
+
+### DEC-043 — SPEC-15: tail-start selection degenerated, and the fitted model is rejected at the operating point §10.2 O4 specifies
+
+- **Date:** 2026-10-05
+- **Raised by:** Armaan (SPEC-15)
+- **Spec:** SPEC-15
+- **Type:** defect (first part) and finding (second part)
+- **Status:** **part 1 resolved; part 2 open — needs a decision from both of us** — part 2 superseded by DEC-047 (option A)
+
+**Part 1 — the selection defect, fixed.** The Clauset–Shalizi–Newman procedure picks `x_min` by minimising the KS distance between data and fitted model. The KS distance of a correctly fitted model falls like `1/sqrt(n_tail)`, so when a distribution has no clean power-law region the search is rewarded for choosing an ever larger `x_min`: fewer points, a lower KS distance, and a "better" fit. On the first Experiment 2b run it ran away to the top of the distribution and returned fits with a **negative exponent** — a rising density, which is not a tail at all:
+
+| condition | x_min | n_tail | alpha | decades |
+|---|---|---|---|---|
+| none | 18,493 | 888 | **−109.0** | 0.14 |
+| random | 20,282 | 635 | **−188.9** | 0.10 |
+| patches | 18,398 | 585 | **−136.1** | 0.11 |
+
+Those numbers describe the finite-size peak near the largest reachable fire, not a tail. **Fix:** a candidate `x_min` must now leave at least `G2_MIN_DECADES` (two) of range below the largest observed size, as well as the existing 50-point floor — the same two decades §10.2 O4's gate asks for, so any fit that is reported at all spans a range worth reporting. `fit_tail` additionally returns `ks_critical` (the 5% critical value, `1.36/sqrt(n)`) and `fit_rejected`, and `run_exp2b` prints a loud warning when a fit is rejected, so a poor fit can never be read as a measured exponent. Regression tests cover both.
+
+**Part 2 — the model is rejected at this operating point.** With the fix, Experiment 2b at R = 10,000 gives:
+
+| condition | p | x_min | alpha | cutoff | decades | KS | 5% critical | verdict |
+|---|---|---|---|---|---|---|---|---|
+| none | 0.4769 | 1 | 0.668 ± 0.005 | 21,530 | 4.41 | 0.1171 | 0.0136 | **rejected** |
+| random | 0.5342 | 252 | 0.085 ± 0.019 | 10,269 | 2.00 | 0.1179 | 0.0158 | **rejected** |
+| patches(k=4) | 0.5225 | 194 | 0.208 ± 0.017 | 9,730 | 2.09 | 0.0994 | 0.0159 | **rejected** |
+
+Gate **G2 passes** — every fit spans at least two decades — but the fitted model does not describe the data: each KS distance is roughly eight times its 5% critical value.
+
+**Why, and why raising R will not help.** §10.2 O4's remedy for a failing gate is to raise R to 50,000. That addresses too few samples. This is structural, not statistical. Each condition is run at **its own critical point**, and at a finite lattice the critical point is exactly where a spanning pile-up dominates: 33% of untreated fires burn more than 10,000 cells, so the distribution is a shallow power law followed by a peak, which no monotonically decaying model can represent. More samples measure that shape more precisely; they do not make it a power law with a cutoff.
+
+The machinery itself is sound. The same fitter on the same untreated condition at fuel densities **below** the threshold (L = 256, R = 2,000, 5% critical value 0.0304) fits well, and the cutoff grows as the critical point is approached, which is the expected critical scaling:
+
+| p | p − p_c | alpha | cutoff | KS | verdict |
+|---|---|---|---|---|---|
+| 0.4169 | −0.06 | 0.536 | 269 | 0.0093 | fits |
+| 0.4369 | −0.04 | 0.579 | 648 | 0.0166 | fits |
+| 0.4569 | −0.02 | 0.659 | 2,867 | 0.0249 | fits (marginal) |
+| 0.4769 | 0.00 | 0.686 | 21,948 | 0.1115 | rejected |
+
+**What can still be said about SQ3.** Compared at a *common* tail start, so the exponents are comparable, the three conditions are close: at `x_min = 1`, alpha is 0.668, 0.674 and 0.718 for `none`, `random` and `patches`, with cutoffs 21,530, 23,488 and 21,216. But the distributions are not identical — a two-sample KS test separates every pair (D = 0.028 to 0.070 against a 5% critical value of 0.0192), and `patches` gives visibly smaller fires (median 2,681 cells against 3,759 untreated) even though it is run at a higher fuel density. So treatment does change the burn-size distribution; what cannot be defended from this run is a *fitted exponent or cutoff* for any condition.
+
+**Options.**
+
+- **(A) Report the distributions, not the fits.** Keep the run as it is, present log-log survival curves per condition in SPEC-17, and state in Methods that a power-law-with-cutoff fit is rejected at the critical point on a 256 lattice, with the table above as evidence. Costs nothing; SQ3 is answered qualitatively and the rejection is itself a result about finite-size effects.
+- **(B) Add a sub-critical arm.** Rerun 2b at, say, `p_c − 0.04` for each condition, where the model fits (KS 0.0166 untreated), and report fitted exponents and cutoffs there alongside the critical-point distributions. This answers SQ3 as §10.2 O4 intended — treatment truncating the tail would show as a smaller cutoff at matched distance from each condition's threshold. Cost: 30,000 more runs, about four minutes.
+- **(C) Raise R to 50,000** as §10.2 O4's gate prescribes. Rejected above: it cannot fix a structural misfit, and costs five times the compute for a better-measured rejection.
+
+**Recommendation.** **(B) in addition to (A)**, because it is four minutes of compute and turns a rejected fit into a reportable one, while keeping the critical-point distributions that show *why* the fit fails there. Left open rather than applied: adding an operating point is a change to what §6.2 and §10.2 O4 specify for this experiment, and that is a decision for both of us, not one to take while implementing.
+
+**Context impact.** `project-context.md` §10.2 O4 records the gate outcome (done in this PR). If (B) is adopted, §6.2's Experiment 2b row gains the sub-critical arm.
+
+**Commit.** pending
+
+### DEC-044 — SPEC-16: ownership, the seven Experiment 3 conditions, Experiment 4's reduced set, and the I11 outcome
+
+- **Date:** 2026-10-05
+- **Raised by:** Armaan (SPEC-16)
+- **Spec:** SPEC-16
+- **Type:** ambiguity, plus one reportable finding
+- **Status:** resolved — reviewer to confirm
+
+**Ownership.** SPEC-16 moves from Aaron to Armaan, reviewer Aaron, agreed 2026-10-04 alongside SPEC-13 in exchange for SPEC-06 and SPEC-08.
+
+**The seven Experiment 3 conditions.** §6.2 says "7 conditions at `b` = 0.15" without listing them, and the figure predates §10.1 D2, which expanded the strip conditions from one width to three and took Experiment 1 from 8 condition-levels to 12. The roadmap's §4.4 table is the list the number came from: untreated, `random`, `patches` at `k` ∈ {4, 8, 16}, strips perpendicular, strips parallel, and `buffer`. Dropping the untreated reference from that list leaves exactly **seven treated conditions**, which is what Experiment 3 runs:
+
+`random`, `patches(4)`, `patches(8)`, `patches(16)`, `strips_perp(w*)`, `strips_para(w*)`, `buffer`.
+
+The strip widths are the level Experiment 2's pre-registered rule selected (`w* = 4`, DEC-039), so the orientation contrast is measured at the width the rest of the project uses, and the clustering-scale axis keeps all three `patches` levels. `none` at `b = 0` is carried as an eighth arm at every `kappa`, because the §11 efficiency metric divides by the untreated burned fraction *at the same operating point* and Experiment 1's untreated runs are at a different `kappa` grid. Eight arms × 4 `kappa` × R = 200 = 6,400 runs.
+
+**Experiment 4's reduced condition set.** §6.2 says "reduced condition set" without naming it. Used: `none` at `b = 0`, `random`, `patches(k*)`, `strips_perp(w*)`, `buffer` — the untreated reference plus one level of each family the primary analysis reports, dropping `strips_para` and the extra `patches` scales. Five conditions × 3 `f_treat` × 3 `beta` × R = 200 = 9,000 runs. It is deliberately smaller than Experiment 3: this is a sensitivity check, not a second main experiment. `p` is the single absolute value 0.5504 (the `kappa` = 2 Experiment 0b threshold + 0.05), resolved once and identical on all 9,000 rows, with `p_rel` null throughout (DEC-011).
+
+**Seeds.** Experiment 3 from 6,000,000, I11 from 8,000,000, Experiment 4 from 7,000,000, each laid out by grid position. Clear of Experiments 1 (4.0M), 2 (5.0–6.0M) and 2b (9.0M).
+
+**I11 — the frame-invariance check did not pass, and that was a planned outcome.** Measured at `b` = 0.15, `p_rel` = +0.05, `kappa` = 2, L = 256, R = 200 per cell, no settlement. The gap is mean `burned_fraction` for `strips_perp` minus `strips_para`, so a negative gap means strips across the wind burn less:
+
+| wind | gap | 95% interval |
+|---|---|---|
+| `phi` = 0 (along the lattice axes) | **−0.00884** | [−0.01062, −0.00707] |
+| `phi` = π/4 (diagonal) | **−0.00448** | [−0.00561, −0.00335] |
+
+The intervals do not overlap; the difference is −0.00436 ± 0.00107, about four standard errors. **So part of the orientation advantage is a lattice artefact: the gap is about twice as large when the strips lie along the lattice axes as when they run diagonally.**
+
+Per §10.1 D3, which fixed both outcomes in advance, this goes in **Limitations with its magnitude attached**, not in Methods as a passed check. What survives rotation is the *conclusion*: strips across the wind beat strips along it at both wind angles, significantly in both cases (both intervals lie entirely below zero). What does not survive is the *size* of that advantage, which should not be quoted to more precision than a factor of two. `test_i11_lattice_frame_invariance` asserts the direction and the significance, which hold either way, and reports the magnitude rather than failing — asserting overlap would turn a result D3 planned for into a broken suite.
+
+**Context impact.** none. §7 I11's wording stands; its measured outcome is recorded here and in the test's output.
+
+**Commit.** pending
+
+### DEC-045 — SPEC-17: how the figures present the two results that are not single numbers
+
+- **Date:** 2026-10-05
+- **Raised by:** Armaan (SPEC-17)
+- **Spec:** SPEC-17
+- **Type:** ambiguity
+- **Status:** resolved — reviewer to confirm
+
+SPEC-17 lists the figures to build but was written before two results turned out not to be single numbers. Both are presented so that a reader cannot take a value the data do not support.
+
+- **Threshold shift (DEC-041).** `random` and `patches(4)` are drawn as a point with a 95% interval from their finite-size-scaling crossing. `strips_perp(4)` has no crossing, so it is drawn as its three per-`L` 50% points joined by a line, each labelled with its lattice size, on a row labelled "no scale-free value". The untreated baseline is a dashed rule across the panel. No `PERCOLATION` value appears, per §10.1 D5.
+- **Burn-size distributions (DEC-043).** Survival curves per condition with the fitted model dashed over them, plus a box on the figure stating that the fit is rejected and why. A reader who takes only the figure cannot come away with an exponent.
+
+Other choices: one colour per condition family, lightened by clustering scale so the three levels of a family are distinguishable without a second colour axis; `random` is drawn as the scale-1 point of every family line in the clustering-scale figure, because that is what makes §11's axis a continuum rather than three separate series; `buffer` is never placed on that axis, being the targeted condition; and every panel showing a treated condition is labelled with the **realised** treated fraction. The cell-state codes the scar figures colour by are literals in `make_figures.py`, since the module imports nothing from `src/`; a test asserts they still equal the model's.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-046 — SPEC-21: the results notebooks report two results that have no single number
+
+- **Date:** 2026-10-05
+- **Raised by:** Armaan (SPEC-21)
+- **Spec:** SPEC-21
+- **Type:** ambiguity
+- **Status:** resolved — reviewer to confirm
+
+SPEC-21 asks each notebook to present "the threshold shift per condition with confidence intervals" and "burn-size distributions with fitted exponent **and** cutoff". Neither exists for every condition, so both are presented as what was actually measured, with the reason stated in prose next to the figure:
+
+- **Notebook 03 §1** gives `random` and `patches(4)` as thresholds with intervals, and `strips_perp` as its per-lattice 50% points with the mechanism that produces them (a strip is breached if the fire finds any weak point along it, so doubling the lattice doubles the chances while the spacing stays fixed). No single value is quoted for it (DEC-041).
+- **Notebook 03 §2** gives the distributions and states that the fitted model is rejected, why more replicates cannot fix it, and that the fitter is sound below the critical point. SQ3 is answered by comparing distributions rather than by quoting exponents (DEC-043).
+
+Other choices: the geometry gallery in notebook 02 draws at a denser fuel bed (0.75) on a smaller lattice (96) than the experiments use, labelled as such, because treatment marks only fuel cells and at experiment densities a 16-cell block reads as a dotted square rather than a block; the settlement timing table is shown beside the reach probability with the right-censoring spelled out (DEC-037), since the fastest median times belong to the arrangements that almost nothing gets through; and both notebooks open with `%matplotlib inline`, without which a registry `Figure` renders as a repr and the committed notebook stores no image.
+
+**Context impact.** none
+
+**Commit.** pending
+
+### DEC-047 — SPEC-14/15/16/17/21: review of the stacked PRs, and what it settled
+
+- **Date:** 2026-10-06
+- **Raised by:** Aaron (reviewer of SPEC-14 to SPEC-21)
+- **Spec:** SPEC-14, SPEC-15, SPEC-16, SPEC-17, SPEC-21
+- **Type:** deviation record and decision
+- **Status:** resolved. Closes DEC-043 part 2 and confirms DEC-041.
+
+A review of the five stacked PRs found no defect in the model code or the data. It found acceptance criteria that no longer described the results, a mislabelled `code_version`, and several unlogged scope deviations. All fixes are on the SPEC-21 branch as new commits; the lower branches are unchanged.
+
+**1. DEC-041, option A confirmed.** `strips_perp` has no scale-free threshold: its 50% point falls with `L` (0.748, 0.713, 0.670, about 0.628 at L = 1024) and is reported per lattice size, never as one value. Decided by Aaron, who delegated the call to the recommendation in DEC-041.
+
+**2. DEC-043 part 2: option A, not B.** Experiment 2b's distributions are reported and the rejected fit is stated as a finding. The sub-critical arm (option B) is **not adopted**. It would be about four minutes of compute but would change what §6.2 and §10.2 O4 specify and would invalidate the figures and notebooks already built on option A. If the report needs a fitted exponent, B is still available as a follow-up spec. The `none` fit (`x_min = 1`, `n_tail = 10,000`) uses the whole sample and is rejected like the others, so no exponent from it is reported.
+
+**3. Acceptance criteria amended to match the data.** SPEC-14 criteria 5, 6 and 7 now cover `random` and `patches` only, with `strips_perp` stated as having no crossing. SPEC-15's row count is 30,000 (three conditions), not 40,000. Each amended line carries a pointer to this entry. No other criterion was changed.
+
+**4. SPEC-16 `code_version`.** The three parquets are labelled `ef1f850`, the parent of the code commit `19058ce`, so the label names the wrong tree. Rather than overwrite committed parquets (workflow-rules §9), the experiments were re-run from a clean worktree at `19058ce` into scratch files. Experiment 3 (6,400 rows), Experiment 4 (9,000) and the I11 frame (800) are identical to the committed files in every column except `wall_ms`, which is timing. The committed results are therefore valid and are left as they are. The same check was made for SPEC-15: a clean run of Experiment 2b at `e1d7b81` reproduces `exp2b.parquet` (30,000 rows, `code_version` `c999a69` in the committed file) and `tail_fits.parquet` exactly apart from `wall_ms`.
+
+**5. Scope deviations, logged here because they were not logged when made.**
+
+| Spec | File or change | Why |
+|---|---|---|
+| SPEC-14 | `tests/test_exp2.py` (new) | Tests for the selection rule and sweep; see DEC-040. |
+| SPEC-14 | `results/exp2_prepass.parquet`, `results/exp2_scale.parquet` (new) | Pre-pass centring (DEC-040); per-L 50% points for `strips_perp` (DEC-041). |
+| SPEC-16 | `tests/test_exp3_exp4.py` (new); `tests/test_invariants.py` gains a `Path` import | Tests for the new experiments. |
+| SPEC-16 | `run.py` gains an `i11` entry | The I11 check needed an entry point; `--exp all` now includes it. §4.7 allows auxiliary entries. |
+| SPEC-15 | `tests/test_exp2b.py` gains `test_i10_holds_over_the_committed_2b_frame` | The spec says I10 must hold over the 2b frame and no test checked the committed frame. |
+
+**6. Not caused by this stack.** `tests/test_experiments.py::test_every_column_present_with_stated_dtype` (SPEC-05) fails on pandas 2.2.3 because it expects pandas 3's `str` dtype and finds `object`. No spec in this stack touches it. It is left as it is; it passes on pandas 3.
+
+**7. Notebook 03.** The §10.1 D5 statement that `PERCOLATION` and `STUDY` thresholds are not comparable was missing and is added to the opening cell of §1. Only a markdown cell changed, so no output is stale.
+
+**Commits for earlier entries** (the log's "pending" markers are left as written): DEC-040 `6d54d72`; DEC-041 `77101cf`; DEC-042 and DEC-043 `9ec889c`; DEC-044 `ed26639`; DEC-045 `07ac993`; DEC-046 `17b6193`.
+
+**Context impact.** `project-context.md` edited in the same change, with the project lead's permission:
+
+- §6.2, Experiment 2b row (line 334): "best `strips_perp` level" removed; states `strips_perp` is not run (DEC-041, DEC-042).
+- §10.2 O4, last sentence of the gate outcome (line 490): the sub-critical arm is now recorded as considered and not adopted (this entry).
+
+**Commit.** pending

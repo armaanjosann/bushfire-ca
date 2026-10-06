@@ -6,6 +6,7 @@ an absence (SPEC-01).
 """
 
 import dataclasses
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -333,6 +334,44 @@ def test_i10():
         assert_not_truncated(mixed)
 
 
-@pytest.mark.xfail(reason="I11 lattice frame invariance lands in SPEC-16", strict=False)
-def test_i11():
-    raise NotImplementedError
+def test_i11_lattice_frame_invariance():
+    """I11, measured either way (project-context.md §7, §10.1 D3). SPEC-16.
+
+    Strips perpendicular to the wind beat strips parallel to it. The question is
+    whether that is partly an artefact of the strips lying along the lattice
+    axes, so the gap is measured with the wind on an axis (phi = 0) and on the
+    diagonal (phi = pi/4), with the geometry rotating to match.
+
+    D3 fixed in advance that **both outcomes are reportable**: overlapping
+    intervals are a line in Methods, non-overlapping ones are a measured
+    artefact with a magnitude, for Limitations. So this test asserts what must
+    hold either way — the measurement is well formed and the *direction* of the
+    effect survives rotation — and reports the magnitude rather than failing on
+    it. Asserting overlap would turn a result D3 planned for into a broken suite.
+    """
+    import pandas as pd
+
+    from src.analysis import assert_not_truncated
+    from src.experiments import I11_PHIS, I11_R, i11_gaps
+
+    path = Path("results/i11_frame.parquet")
+    assert path.exists(), "run `python run.py --exp i11` first"
+    df = pd.read_parquet(path)
+    assert_not_truncated(df)
+    assert set(df["condition"]) == {"strips_perp", "strips_para"}
+    assert set(df["phi"].round(6)) == {round(p, 6) for p in I11_PHIS}
+    assert df.groupby(["phi", "condition"]).size().min() == I11_R
+
+    gaps = i11_gaps(df)
+    assert len(gaps) == 2 and (gaps["gap_stderr"] > 0).all()
+
+    # the conclusion must be frame-invariant even if its size is not: strips
+    # across the wind beat strips along it at both wind angles, significantly
+    assert (gaps["gap"] < 0).all(), f"orientation effect reversed: {gaps.to_dict('records')}"
+    assert (gaps["ci_hi"] < 0).all(), "the orientation effect is not significant at some phi"
+
+    axis, diag = gaps.iloc[0], gaps.iloc[1]
+    print(f"\nI11: gap(phi=0) = {axis['gap']:+.5f} [{axis['ci_lo']:+.5f}, {axis['ci_hi']:+.5f}], "
+          f"gap(phi=pi/4) = {diag['gap']:+.5f} [{diag['ci_lo']:+.5f}, {diag['ci_hi']:+.5f}]; "
+          f"difference {gaps.attrs['difference']:+.5f} +/- {gaps.attrs['difference_stderr']:.5f}; "
+          f"intervals {'overlap (frame invariance holds)' if gaps.attrs['overlap'] else 'do not overlap (measured lattice artefact, for Limitations)'}")

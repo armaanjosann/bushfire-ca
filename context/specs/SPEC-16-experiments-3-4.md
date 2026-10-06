@@ -1,16 +1,16 @@
 ---
 id: SPEC-16
 title: Experiments 3 and 4, and the lattice frame-invariance check
-status: not started
-owner: Aaron
-reviewer: Armaan
+status: in review
+owner: Armaan
+reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
 depends_on: [SPEC-13]
 implements: [§6.2 Exp 3, §6.2 Exp 4, §10.1 D3, §7 I11]
-issue:
+issue: [#16](https://github.com/armaanjosann/bushfire-ca/issues/16)
 branch: spec/SPEC-16-experiments-3-4
 pr:
-decisions: [DEC-003, DEC-008, DEC-011, DEC-015]
+decisions: [DEC-003, DEC-008, DEC-011, DEC-015, DEC-044, DEC-047]
 ---
 
 # SPEC-16 — Experiments 3 and 4, and frame invariance
@@ -69,18 +69,18 @@ No new interface. Uses `run_configs` (SPEC-05) and `resolve_p` (SPEC-06).
 
 ## Acceptance criteria
 
-- [ ] `results/exp3.parquet` and `results/exp4.parquet` exist, `truncated == False`, `run_id` unique.
-- [ ] Experiment 3 rows at each `kappa` resolved `p` against that `kappa`'s threshold — verified by comparing `p` to the `pc_estimates.parquet` row per `kappa`.
-- [ ] Experiment 3 covers all four `kappa` values × seven conditions at `b = 0.15`.
-- [ ] Experiment 4 covers the full `f_treat × beta` cross at the declared reduced condition set.
-- [ ] Every Experiment 4 row has the same `p`, equal to the `kappa = 2` Experiment 0b `fss_crossing` value + 0.05, with `p_rel` null and `kappa == 2`.
-- [ ] `results/i11_frame.parquet` exists with both `phi` arms at R = 200.
-- [ ] `test_i11` reports the two gaps, their confidence intervals, and whether they overlap — and the PR body states which outcome was observed.
-- [ ] `settlement_reached` is non-null throughout both experiments.
+- [x] `results/exp3.parquet` and `results/exp4.parquet` exist, `truncated == False`, `run_id` unique.
+- [x] Experiment 3 rows at each `kappa` resolved `p` against that `kappa`'s threshold — verified by comparing `p` to the `pc_estimates.parquet` row per `kappa`.
+- [x] Experiment 3 covers all four `kappa` values × seven conditions at `b = 0.15`.
+- [x] Experiment 4 covers the full `f_treat × beta` cross at the declared reduced condition set.
+- [x] Every Experiment 4 row has the same `p`, equal to the `kappa = 2` Experiment 0b `fss_crossing` value + 0.05, with `p_rel` null and `kappa == 2`.
+- [x] `results/i11_frame.parquet` exists with both `phi` arms at R = 200.
+- [x] `test_i11` reports the two gaps, their confidence intervals, and whether they overlap — and the PR body states which outcome was observed.
+- [x] `settlement_reached` is non-null throughout both experiments.
 
 ## Invariants
 
-- [ ] **I11 lattice frame invariance** — the `strips_perp − strips_para` gap does not depend on whether the wind is axis-aligned; measured, with the magnitude reported either way.
+- [x] **I11 lattice frame invariance** — the `strips_perp − strips_para` gap does not depend on whether the wind is axis-aligned; measured, with the magnitude reported either way.
 
 ## Verification
 
@@ -98,13 +98,13 @@ PY
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] Both parquets committed with a real `code_version`
-- [ ] PR open, linked to the issue — status `in review`
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] Both parquets committed with a real `code_version` *(a real SHA, but of the parent of the code commit; reproduced bit-for-bit from a clean tree at the code commit, DEC-047)*
+- [x] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks

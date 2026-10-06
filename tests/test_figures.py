@@ -8,6 +8,7 @@ import re
 import shutil
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 from matplotlib.figure import Figure
@@ -195,3 +196,122 @@ def test_validation_caption_states_the_constraints():
     caption = mf.CAPTIONS["validation"]
     assert "validation target only" in caption
     assert "not comparable with any STUDY threshold" in caption
+
+
+# ===========================================================================
+# SPEC-17: the results figures
+# ===========================================================================
+
+RESULTS_FIGURES = (
+    "clustering-scale", "efficiency", "threshold-shift", "burn-size-distributions",
+    "sq4-tradeoff", "wind-interaction", "sensitivity", "scars", "scars-space-time",
+)
+
+
+def test_every_results_figure_is_registered_with_a_caption():
+    """The report cites these by name; a missing one must fail here, not be
+    noticed when the report is written."""
+    for name in RESULTS_FIGURES:
+        assert name in mf.FIGURES, f"{name} is not registered"
+        assert callable(mf.FIGURES[name])
+        assert len(mf.CAPTIONS[name]) > 120, f"{name} has no real caption"
+
+
+@pytest.mark.parametrize("name", RESULTS_FIGURES)
+def test_results_figure_builds_and_returns_a_figure(name):
+    fig = mf.FIGURES[name]()
+    assert isinstance(fig, Figure)
+    assert fig.axes, f"{name} produced no axes"
+
+
+@pytest.mark.parametrize("name", RESULTS_FIGURES)
+def test_results_figure_raises_clearly_when_its_input_is_missing(name, results_dir):
+    """A builder must say which command to run, not plot an empty axis."""
+    with pytest.raises((FileNotFoundError, LookupError, ValueError)) as excinfo:
+        mf.FIGURES[name]()
+    assert "run `python run.py" in str(excinfo.value)
+
+
+def test_figures_never_simulate():
+    assert not re.search(r"\brun_fire\b|\bcapture_scar\b", SOURCE), \
+        "figures/make_figures.py must never call the simulator (§9)"
+    assert not re.search(r"^\s*(from|import)\s+src\b", SOURCE, re.M), \
+        "figures/make_figures.py must not import from src/"
+
+
+def test_scar_state_codes_match_the_model():
+    """The scar figures colour by cell state using literals, so that this module
+    imports nothing from src/. Those literals must agree with the model."""
+    from src import model
+
+    for name in ("EMPTY", "FUEL", "BURNING", "BURNT", "SETTLEMENT"):
+        assert getattr(mf, name) == getattr(model, name), name
+
+
+def test_no_results_figure_places_a_percolation_threshold_beside_a_study_one():
+    """§10.1 D5: the validation threshold is a different quantity and must never
+    sit in the same panel as a treated STUDY threshold."""
+    pc = pd.read_parquet(mf.RESULTS_DIR / mf.PC_PATH)
+    perc = float(pc[(pc["regime"] == "PERCOLATION") & (pc["method"] == "fss_crossing")]["p_c"].iloc[0])
+    for name in RESULTS_FIGURES:
+        fig = mf.FIGURES[name]()
+        for ax in fig.axes:
+            for line in ax.lines:
+                xs = line.get_xdata()
+                if len(xs):
+                    assert not any(abs(float(x) - perc) < 1e-6 for x in np.atleast_1d(xs)), \
+                        f"{name} draws the PERCOLATION threshold"
+
+
+def test_threshold_shift_shows_the_scale_dependent_condition_without_a_single_value():
+    """DEC-041: a condition with no scale-free threshold is shown as its per-L
+    points and labelled as such, never as one number."""
+    fig = mf.FIGURES["threshold-shift"]()
+    labels = [t.get_text() for t in fig.axes[0].get_yticklabels()]
+    assert any("no scale-free value" in lb for lb in labels)
+    assert any("untreated" in lb for lb in labels)
+
+
+def test_efficiency_divides_by_the_realised_treated_area():
+    """§11: the efficiency metric divides by realised n_treated, never nominal b."""
+    body = SOURCE.split("def efficiency()")[1].split("# ---")[0]
+    assert "n_treated" in body and "n_cells" in body
+    assert not re.search(r'/\s*cell\["b"\]|/\s*b\b', body), "efficiency must not divide by nominal b"
+
+
+def test_sq4_figure_plots_both_response_variables():
+    fig = mf.FIGURES["sq4-tradeoff"]()
+    ax = fig.axes[0]
+    assert "burned" in ax.get_xlabel()
+    assert "settlement" in ax.get_ylabel()
+    assert len(ax.collections) + len(ax.lines) > 5, "every condition should appear"
+
+
+def test_burn_size_figure_reports_the_fit_verdict():
+    """DEC-043: a rejected fit must be visible on the figure, not just in the data."""
+    fits = pd.read_parquet(mf.RESULTS_DIR / mf.TAIL_FITS_PATH)
+    fig = mf.FIGURES["burn-size-distributions"]()
+    text = " ".join(t.get_text() for ax in fig.axes for t in ax.texts)
+    if (fits["fit_rejected"] > 0).any():
+        assert "REJECTED" in text
+
+
+def test_scar_figures_need_the_npz_and_its_ignition_steps(results_dir, tmp_path):
+    np.savez_compressed(results_dir / mf.SCARS_PATH, run_ids=np.array(["abc"]),
+                        **{"abc__scar": np.zeros((4, 4), dtype=np.int8)})
+    for name in ("scars", "scars-space-time"):
+        with pytest.raises(ValueError, match="ignition_step"):
+            mf.FIGURES[name]()
+
+
+def test_building_twice_gives_byte_identical_files(tmp_path):
+    first, second = tmp_path / "a", tmp_path / "b"
+    for name in RESULTS_FIGURES:
+        a, b = mf.build(name, str(first)), mf.build(name, str(second))
+        assert Path(a).read_bytes() == Path(b).read_bytes(), f"{name} is not reproducible"
+
+
+def test_build_all_covers_every_registered_figure(tmp_path):
+    paths = mf.build_all(str(tmp_path))
+    assert len(paths) == len(mf.FIGURES)
+    assert all(Path(p).exists() and Path(p).stat().st_size > 5_000 for p in paths)

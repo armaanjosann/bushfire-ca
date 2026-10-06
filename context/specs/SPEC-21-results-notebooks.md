@@ -1,16 +1,16 @@
 ---
 id: SPEC-21
 title: Results notebooks — geometries, thresholds and tails
-status: not started
+status: in review
 owner: Armaan
 reviewer: Aaron
 phase: P6 — Delivery (Sprint 4)
 depends_on: [SPEC-17, SPEC-20]
 implements: [§9, §11]
-issue:
+issue: [#29](https://github.com/armaanjosann/bushfire-ca/issues/29)
 branch: spec/SPEC-21-results-notebooks
 pr:
-decisions: [DEC-016, DEC-017]
+decisions: [DEC-016, DEC-017, DEC-037, DEC-041, DEC-043, DEC-046, DEC-047]
 ---
 
 # SPEC-21 — Results notebooks: geometries, thresholds and tails
@@ -84,19 +84,19 @@ As SPEC-20: consume `FIGURES` from `figures.make_figures`. Register nothing, red
 
 ## Acceptance criteria
 
-- [ ] Both notebooks exist, committed with outputs stored.
-- [ ] Restart-and-run-all from a clean kernel completes with no error, after `python run.py --exp all`.
-- [ ] Execution counts are sequential from 1 in each notebook.
-- [ ] `grep -c run_fire` over both notebooks returns 0.
-- [ ] Every figure comes from `FIGURES`, except the geometry gallery.
-- [ ] Every figure is followed by at least one markdown cell of interpretation.
-- [ ] No cell or markdown text places a `PERCOLATION` `p_c` beside a `STUDY` `p_c`.
-- [ ] Every figure the report cites appears in one of the three notebooks.
-- [ ] `notebooks/README.md` lists all three notebooks in running order with their prerequisite commands.
+- [x] Both notebooks exist, committed with outputs stored.
+- [x] Restart-and-run-all from a clean kernel completes with no error, after `python run.py --exp all`.
+- [x] Execution counts are sequential from 1 in each notebook.
+- [x] `grep -c run_fire` over both notebooks returns 0.
+- [x] Every figure comes from `FIGURES`, except the geometry gallery.
+- [x] Every figure is followed by at least one markdown cell of interpretation.
+- [x] No cell or markdown text places a `PERCOLATION` `p_c` beside a `STUDY` `p_c`.
+- [x] Every figure the report cites appears in one of the three notebooks.
+- [x] `notebooks/README.md` lists all three notebooks in running order with their prerequisite commands.
 
 ## Invariants
 
-- [ ] None owned. All eleven must still pass in the full suite at this point.
+- [x] None owned. All eleven must still pass in the full suite at this point.
 
 ## Verification
 
@@ -120,10 +120,10 @@ PY
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] PR open, linked to the issue — status `in review`
+- [x] Acceptance criteria all met
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks

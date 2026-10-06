@@ -1,16 +1,16 @@
 ---
 id: SPEC-13
 title: Experiment 1 — geometry × budget
-status: not started
-owner: Aaron
-reviewer: Armaan
+status: in review
+owner: Armaan
+reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
 depends_on: [SPEC-12]
 implements: [§6.2 Exp 1, §6.1]
-issue:
+issue: [#13](https://github.com/armaanjosann/bushfire-ca/issues/13)
 branch: spec/SPEC-13-experiment-1
 pr:
-decisions: [DEC-003, DEC-009, DEC-011, DEC-013, DEC-015]
+decisions: [DEC-003, DEC-009, DEC-011, DEC-013, DEC-015, DEC-039]
 ---
 
 # SPEC-13 — Experiment 1: geometry × budget
@@ -70,20 +70,20 @@ No new interface. Uses `run_configs` (SPEC-05) and `resolve_p` (SPEC-06).
 
 ## Acceptance criteria
 
-- [ ] `python run.py --exp 1` produces `results/exp1.parquet` with `truncated == False` on every row.
-- [ ] Row count matches the grid the builder declares, and `run_id` is unique.
-- [ ] `none` appears only at `b == 0`; every other condition appears at every budget.
-- [ ] Every `p_rel` row's `p` equals the resolved threshold plus the offset, to floating tolerance.
-- [ ] The `p = 0.70` rows carry `p_rel` as null.
-- [ ] `spanned` is null on every row; `reached_edge` and `settlement_reached` are non-null on every row.
-- [ ] `n_treated / n_occupied` is within tolerance of `b` for every row (I7 over the frame).
-- [ ] `python run.py --exp scars` writes `results/scars_illustrative.npz`, under 5 MB, containing only the named configs keyed by `run_id`, each with both a `scar` and an `ignition_step` array. Rerunning it produces identical arrays.
-- [ ] Before Experiment 1 runs, the PR records the Experiment 2 selection rule from §6.2 unchanged, so SPEC-14's selection cannot be chosen after seeing this data.
-- [ ] Wall time is consistent with §6.3's ~28 core-hours estimate; a large overshoot means the bounding box regressed.
+- [x] `python run.py --exp 1` produces `results/exp1.parquet` with `truncated == False` on every row.
+- [x] Row count matches the grid the builder declares, and `run_id` is unique.
+- [x] `none` appears only at `b == 0`; every other condition appears at every budget.
+- [x] Every `p_rel` row's `p` equals the resolved threshold plus the offset, to floating tolerance.
+- [x] The `p = 0.70` rows carry `p_rel` as null.
+- [x] `spanned` is null on every row; `reached_edge` and `settlement_reached` are non-null on every row.
+- [x] `n_treated / n_occupied` is within tolerance of `b` for every row (I7 over the frame).
+- [x] `python run.py --exp scars` writes `results/scars_illustrative.npz`, under 5 MB, containing only the named configs keyed by `run_id`, each with both a `scar` and an `ignition_step` array. Rerunning it produces identical arrays.
+- [x] Before Experiment 1 runs, the PR records the Experiment 2 selection rule from §6.2 unchanged, so SPEC-14's selection cannot be chosen after seeing this data.
+- [x] Wall time is consistent with §6.3's ~28 core-hours estimate; a large overshoot means the bounding box regressed.
 
 ## Invariants
 
-- [ ] None owned. I7 and I10 must hold over this frame.
+- [x] None owned. I7 and I10 must hold over this frame.
 
 ## Verification
 
@@ -103,14 +103,14 @@ ls -la results/scars_illustrative.npz
 
 ## Definition of done
 
-- [ ] Acceptance criteria all met
-- [ ] Named invariants pass locally
-- [ ] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
-- [ ] Any contract change applied to `project-context.md` in this same PR
-- [ ] `status` updated in this file and in `progress-tracker.md`
-- [ ] `results/exp1.parquet` committed with a real `code_version`
-- [ ] `results/scars_illustrative.npz` committed (the only scar file; `workflow-rules.md` §9)
-- [ ] PR open, linked to the issue — status `in review`
+- [x] Acceptance criteria all met
+- [x] Named invariants pass locally
+- [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
+- [x] Any contract change applied to `project-context.md` in this same PR
+- [x] `status` updated in this file and in `progress-tracker.md`
+- [x] `results/exp1.parquet` committed with a real `code_version`
+- [x] `results/scars_illustrative.npz` committed (the only scar file; `workflow-rules.md` §9)
+- [x] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks

@@ -395,3 +395,243 @@ def test_resolve_p_round_trips_a_measured_threshold(tmp_path):
 def test_literature_constant_is_absent_from_analysis_py():
     src = (Path(__file__).resolve().parent.parent / "src" / "analysis.py").read_text()
     assert "0.407" not in src and "P_C_LITERATURE" not in src
+
+
+# ===========================================================================
+# SPEC-15: burn-size tail fitting
+# ===========================================================================
+#
+# Every check runs against synthetic samples drawn from the exact discrete model
+# with known parameters, so a fit that is quietly wrong shows up here rather
+# than as a plausible exponent in a result (SPEC-15 Notes).
+
+from src.analysis import (  # noqa: E402
+    G2_MIN_DECADES,
+    TAIL_COLUMNS,
+    TAIL_FIT_FIELDS,
+    fit_tail,
+    g2_gate,
+    write_tail_fits,
+)
+
+TAIL_X_MAX = 256 * 256   # the Experiment 2b lattice
+
+
+def tail_sample(rng, n, alpha, x_min, *, cutoff=None, x_max=TAIL_X_MAX, body=0):
+    """n draws from p(x) ∝ x^-alpha · exp(-x/cutoff) on {x_min..x_max}, plus
+    `body` draws uniform on {1..x_min-1} that are *not* power law, so x_min has
+    something real to find."""
+    x = np.arange(x_min, x_max + 1, dtype=float)
+    w = x ** -alpha * (np.exp(-x / cutoff) if cutoff else 1.0)
+    out = rng.choice(x, size=n, p=w / w.sum()).astype(np.int64)
+    if body:
+        out = np.concatenate([out, rng.integers(1, x_min, size=body)])
+    return rng.permutation(out)
+
+
+def test_tail_fit_returns_every_contract_field():
+    f = fit_tail(tail_sample(np.random.default_rng(0), 2000, 2.0, 5), x_max=TAIL_X_MAX)
+    for key in ("x_min", "alpha", "alpha_stderr", "cutoff", "n_tail", "decades_above_xmin",
+                "ks_distance"):
+        assert key in f
+    assert list(f) == TAIL_FIT_FIELDS
+    assert all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in f.values())
+
+
+@pytest.mark.parametrize("alpha", [1.6, 2.2, 2.8])
+def test_tail_recovers_known_exponent_at_known_xmin(alpha):
+    f = fit_tail(tail_sample(np.random.default_rng(1), 5000, alpha, 10), x_max=TAIL_X_MAX, x_min=10)
+    assert abs(f["alpha"] - alpha) <= 2 * f["alpha_stderr"]
+    assert abs(f["alpha_pl"] - alpha) <= 2 * f["alpha_pl_stderr"]
+    assert f["alpha_stderr"] < 0.05
+
+
+def test_tail_alpha_stderr_is_calibrated():
+    """Acceptance: alpha recovered "to within the returned stderr". For an
+    honest stderr that holds in about 68% of samples, so it is checked as
+    coverage over 40 independent samples, not on one hand-picked seed."""
+    inside = []
+    for seed in range(40):
+        f = fit_tail(tail_sample(np.random.default_rng(100 + seed), 3000, 2.2, 10),
+                     x_max=TAIL_X_MAX, x_min=10)
+        inside.append(abs(f["alpha"] - 2.2) <= f["alpha_stderr"])
+    assert 0.5 <= np.mean(inside) <= 0.9
+
+
+def test_tail_reports_no_cutoff_on_untruncated_data():
+    # A 1-sigma interval excludes the truth (here: "no cutoff") by chance in
+    # about one sample in six, so this is a rate, not an every-sample check.
+    detections = reaches_none = 0
+    for seed in range(40):
+        f = fit_tail(tail_sample(np.random.default_rng(200 + seed), 3000, 2.2, 10),
+                     x_max=TAIL_X_MAX, x_min=10)
+        reaches_none += f["cutoff_hi"] == np.inf
+        detections += f["cutoff_p_value"] < 0.05
+    assert reaches_none >= 30
+    assert detections <= 8   # nominal 5% of 40 = 2; generous for the boundary test
+
+
+def test_tail_recovers_known_cutoff():
+    f = fit_tail(tail_sample(np.random.default_rng(3), 8000, 1.5, 5, cutoff=2000),
+                 x_max=TAIL_X_MAX, x_min=5)
+    assert f["cutoff_p_value"] < 1e-6
+    assert f["cutoff_lo"] <= 2000 * 1.15 and f["cutoff_hi"] >= 2000 / 1.15
+    assert abs(f["alpha"] - 1.5) <= 3 * f["alpha_stderr"]
+    # the pure power law, forced to absorb the cutoff, is biased steep
+    assert f["alpha_pl"] > f["alpha"] + 3 * f["alpha_stderr"]
+
+
+def test_tail_cutoff_interval_is_calibrated():
+    inside = []
+    for seed in range(40):
+        f = fit_tail(tail_sample(np.random.default_rng(300 + seed), 4000, 1.5, 5, cutoff=2000),
+                     x_max=TAIL_X_MAX, x_min=5)
+        inside.append(f["cutoff_lo"] <= 2000 <= f["cutoff_hi"])
+    assert 0.5 <= np.mean(inside) <= 0.9
+
+
+def test_tail_distinguishes_truncation_from_exponent_change():
+    """The SQ3 question itself: same alpha with a shorter cutoff must read as
+    truncation, a different alpha with no cutoff as an exponent change."""
+    rng = np.random.default_rng(4)
+    base = fit_tail(tail_sample(rng, 8000, 1.7, 3, cutoff=20000), x_max=TAIL_X_MAX, x_min=3)
+    trunc = fit_tail(tail_sample(rng, 8000, 1.7, 3, cutoff=1000), x_max=TAIL_X_MAX, x_min=3)
+    steep = fit_tail(tail_sample(rng, 8000, 2.3, 3), x_max=TAIL_X_MAX, x_min=3)
+    assert abs(trunc["alpha"] - base["alpha"]) < 3 * np.hypot(trunc["alpha_stderr"], base["alpha_stderr"])
+    assert trunc["cutoff_hi"] < base["cutoff_lo"]
+    assert steep["alpha"] - base["alpha"] > 10 * np.hypot(steep["alpha_stderr"], base["alpha_stderr"])
+
+
+def test_tail_xmin_selected_by_ks_finds_the_tail():
+    """The body below 30 is uniform, not power law. KS selection should land at
+    or above the true start (it errs high, which only costs tail points, never
+    low into the body), and alpha should come out right either way."""
+    picked = []
+    for seed in range(10):
+        f = fit_tail(tail_sample(np.random.default_rng(900 + seed), 4000, 2.0, 30, body=6000),
+                     x_max=TAIL_X_MAX)
+        picked.append(f["x_min"])
+        assert f["x_min"] >= 25                      # never deep in the body
+        assert abs(f["alpha"] - 2.0) <= 3 * f["alpha_stderr"]
+        assert f["n"] == 10000
+    assert 28 <= np.median(picked) <= 45
+
+
+def test_tail_decades_above_xmin():
+    f = fit_tail(tail_sample(np.random.default_rng(6), 3000, 1.6, 10), x_max=TAIL_X_MAX, x_min=10)
+    assert f["decades_above_xmin"] == pytest.approx(np.log10(f["max_size"] / 10))
+
+
+def test_tail_fit_is_deterministic():
+    s = tail_sample(np.random.default_rng(7), 3000, 2.0, 5, body=500)
+    assert fit_tail(s, x_max=TAIL_X_MAX) == fit_tail(s.copy(), x_max=TAIL_X_MAX)
+
+
+def test_tail_drops_zero_sizes_and_rejects_bad_input():
+    s = tail_sample(np.random.default_rng(8), 2000, 2.0, 5)
+    with_zeros = np.concatenate([s, np.zeros(300, dtype=int)])
+    assert fit_tail(with_zeros, x_max=TAIL_X_MAX, x_min=5)["n"] == 2000
+    with pytest.raises(ValueError):
+        fit_tail(np.arange(1, 20), x_max=TAIL_X_MAX)               # too few
+    with pytest.raises(ValueError):
+        fit_tail(s + 0.5, x_max=TAIL_X_MAX)                          # not counts
+    with pytest.raises(ValueError):
+        fit_tail(s, x_max=int(s.max()) - 1)                          # support too small
+    with pytest.raises(ValueError):
+        fit_tail(s, x_max=TAIL_X_MAX, x_min=int(s.max()))            # tail too short
+
+
+def test_tail_analysis_imports_no_forbidden_package():
+    src = Path("src/analysis.py").read_text()
+    for bad in ("scipy", "powerlaw", "numba", "torch"):
+        assert f"import {bad}" not in src and f"from {bad}" not in src
+
+
+# --- the gate and the writer -------------------------------------------------
+
+
+def _fit_row(condition, decades_seed=0, replicates=10_000, **over):
+    f = fit_tail(tail_sample(np.random.default_rng(decades_seed), 1000, 2.0, 5), x_max=TAIL_X_MAX)
+    row = {"experiment": "2b", "condition": condition, "geometry_params": "{}", "b": 0.15,
+           "replicates": replicates, "p": 0.5, "kappa": 0.0, "L": 256, **f}
+    row.update(over)
+    return row
+
+
+def test_g2_gate_flags_short_tails():
+    rows = pd.DataFrame([_fit_row("none", decades_above_xmin=3.1),
+                         _fit_row("random", decades_above_xmin=G2_MIN_DECADES - 0.2)])
+    gate = g2_gate(rows)
+    assert gate.set_index("condition")["passes"].to_dict() == {"none": True, "random": False}
+
+
+def test_write_tail_fits_is_append_only(tmp_path):
+    path = tmp_path / "tail_fits.parquet"
+    write_tail_fits([_fit_row("none", b=0.0)], path)
+    write_tail_fits([_fit_row("random")], path)
+    df = pd.read_parquet(path)
+    assert list(df.columns) == TAIL_COLUMNS and len(df) == 2
+    with pytest.raises(ValueError, match="duplicate"):
+        write_tail_fits([_fit_row("random")], path)
+    assert len(pd.read_parquet(path)) == 2                         # nothing written
+    write_tail_fits([_fit_row("random", replicates=50_000)], path)  # G2 rerun is a new key
+    assert len(pd.read_parquet(path)) == 3
+
+
+def test_write_tail_fits_requires_every_column(tmp_path):
+    row = _fit_row("none")
+    del row["alpha"]
+    with pytest.raises(ValueError, match="missing"):
+        write_tail_fits([row], tmp_path / "t.parquet")
+
+
+# --- the tail selection must not degenerate, and must own up to a bad fit ------
+
+
+def test_tail_selection_refuses_a_sliver_at_the_top(tmp_path):
+    """DEC-043: a model fitted to few points scores a low KS distance by chance,
+    so an unguarded search drifts to the very top of the distribution and
+    "fits" a finite-size peak, returning a rising density (alpha < 0). The
+    candidate range floor stops that."""
+    rng = np.random.default_rng(11)
+    # a shallow power law plus a pronounced bump at the top, like a burn-size
+    # distribution at its critical point on a finite lattice
+    body = tail_sample(rng, 6000, 1.1, 1, x_max=20000)
+    bump = rng.integers(16000, 20000, size=4000)
+    s = np.concatenate([body, bump])
+
+    f = fit_tail(s, x_max=TAIL_X_MAX)
+    assert f["alpha"] > 0, "a tail fit must describe a falling density"
+    assert f["decades_above_xmin"] >= G2_MIN_DECADES
+    assert f["x_min"] <= s.max() / 10 ** G2_MIN_DECADES
+
+
+def test_tail_reports_goodness_of_fit():
+    rng = np.random.default_rng(12)
+    good = fit_tail(tail_sample(rng, 5000, 2.0, 5, cutoff=3000), x_max=TAIL_X_MAX, x_min=5)
+    assert good["ks_distance"] < good["ks_critical"]
+    assert good["fit_rejected"] == 0
+
+    # a distribution the model cannot describe: a narrow bump, no tail at all
+    bump = np.concatenate([rng.integers(9000, 11000, size=5000), rng.integers(1, 50, size=5000)])
+    bad = fit_tail(bump, x_max=TAIL_X_MAX)
+    assert bad["ks_distance"] > bad["ks_critical"]
+    assert bad["fit_rejected"] == 1
+
+
+def test_ks_critical_is_the_standard_five_percent_value():
+    f = fit_tail(tail_sample(np.random.default_rng(13), 4000, 2.0, 5), x_max=TAIL_X_MAX, x_min=5)
+    assert f["ks_critical"] == pytest.approx(1.36 / np.sqrt(f["n"]))
+
+
+def test_committed_experiment_2b_fits_are_recorded_as_rejected():
+    """The committed Experiment 2b result (DEC-043): at each condition's own
+    threshold the power-law-with-cutoff model does not describe the data, and
+    the stored fits say so rather than presenting an exponent as measured."""
+    fits = pd.read_parquet(Path("results/tail_fits.parquet"))
+    assert set(fits["condition"]) == {"none", "random", "patches"}
+    assert (fits["replicates"] == 10_000).all()
+    assert (fits["decades_above_xmin"] >= G2_MIN_DECADES).all()      # gate G2 passes
+    assert (fits["alpha"] > 0).all()                                  # falling density
+    assert (fits["fit_rejected"] == 1).all()                          # but the model is rejected
+    assert (fits["ks_distance"] > fits["ks_critical"]).all()
