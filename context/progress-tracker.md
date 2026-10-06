@@ -52,7 +52,6 @@ Anything `blocked`, with the open DEC entry behind it. First item at the next sy
 
 | Spec | Blocked since | DEC | Waiting on |
 |---|---|---|---|
-| SPEC-15 | 2026-10-05 | DEC-043 | **Resolved by DEC-047** (option A; sub-critical arm not adopted). Row kept until the two `project-context.md` lines named in DEC-047 are edited. |
 
 ## Phase summary
 

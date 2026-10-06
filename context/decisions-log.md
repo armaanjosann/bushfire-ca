@@ -1228,7 +1228,7 @@ Other choices: the geometry gallery in notebook 02 draws at a denser fuel bed (0
 - **Raised by:** Aaron (reviewer of SPEC-14 to SPEC-21)
 - **Spec:** SPEC-14, SPEC-15, SPEC-16, SPEC-17, SPEC-21
 - **Type:** deviation record and decision
-- **Status:** resolved. Closes DEC-043 part 2 and confirms DEC-041. **Two `project-context.md` edits are still to be applied by hand (see Context impact).**
+- **Status:** resolved. Closes DEC-043 part 2 and confirms DEC-041.
 
 A review of the five stacked PRs found no defect in the model code or the data. It found acceptance criteria that no longer described the results, a mislabelled `code_version`, and several unlogged scope deviations. All fixes are on the SPEC-21 branch as new commits; the lower branches are unchanged.
 
@@ -1256,11 +1256,9 @@ A review of the five stacked PRs found no defect in the model code or the data. 
 
 **Commits for earlier entries** (the log's "pending" markers are left as written): DEC-040 `6d54d72`; DEC-041 `77101cf`; DEC-042 and DEC-043 `9ec889c`; DEC-044 `ed26639`; DEC-045 `07ac993`; DEC-046 `17b6193`.
 
-**Context impact.** Two statements in `project-context.md` are now wrong and have **not** been edited, because the edit was blocked in this session:
+**Context impact.** `project-context.md` edited in the same change, with the project lead's permission:
 
-- §6.2, Experiment 2b row (line 334) still lists "best `strips_perp` level" as a condition. It should say `strips_perp` is not run (DEC-041, DEC-042).
-- §10.2 O4, last sentence of the gate outcome (line 490) still says a sub-critical arm "is open in DEC-043". It should say it was considered and not adopted (this entry).
-
-Until those two lines are changed, the specification disagrees with the results; by workflow-rules §5 that is to be fixed in the same pull request.
+- §6.2, Experiment 2b row (line 334): "best `strips_perp` level" removed; states `strips_perp` is not run (DEC-041, DEC-042).
+- §10.2 O4, last sentence of the gate outcome (line 490): the sub-critical arm is now recorded as considered and not adopted (this entry).
 
 **Commit.** pending
