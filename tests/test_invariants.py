@@ -288,11 +288,6 @@ def test_i8_treatment_placement():
                 )
 
 
-@pytest.mark.xfail(reason="I9 conservation lands in SPEC-03", strict=False)
-def test_i9():
-    raise NotImplementedError
-
-
 def test_i10():
     """`truncated` is False across every reported frame, and the assertion lives
     in analysis.py (project-context.md §7 I10, §3.7). SPEC-06.

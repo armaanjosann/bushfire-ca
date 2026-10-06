@@ -1,7 +1,7 @@
 ---
 id: SPEC-18
 title: Reproducibility gate
-status: not started
+status: in review
 owner: Aaron
 reviewer: Armaan
 phase: P6 — Delivery (Sprint 4)
@@ -10,7 +10,7 @@ implements: [§4.7, §9, §8]
 issue:
 branch: spec/SPEC-18-reproducibility
 pr:
-decisions: [DEC-016, DEC-017]
+decisions: [DEC-016, DEC-017, DEC-048, DEC-049]
 ---
 
 # SPEC-18 — Reproducibility gate
@@ -53,6 +53,7 @@ From a clean clone, `python run.py --exp all`, `pytest` and every notebook all s
 - `notebooks/*.ipynb` — re-execution and committed outputs only; no content or structure changes (SPEC-20 and SPEC-21 own those)
 - `results/` — deletions of exploratory runs only
 - `tests/` — only to fix a test broken by the clean-clone environment
+- `src/experiments.py`, `tests/test_exp2.py`, `tests/test_exp2b.py`, `tests/test_invariants.py` — the `--exp all` resume fix and the tests it touches (DEC-048, DEC-049)
 - `context/decisions-log.md`
 
 **Must not touch**

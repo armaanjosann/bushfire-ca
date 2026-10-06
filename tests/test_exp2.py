@@ -204,3 +204,82 @@ def test_run_exp2_records_what_crosses_and_refuses_what_does_not():
     assert list(strips.L) == [128, 256, 512]
     assert strips.p50.is_monotonic_decreasing          # the finding: it falls with L
     assert strips.p50.min() > 0.6                      # and stays far above untreated 0.477
+
+
+# --- resume on committed results (DEC-048) ---
+
+
+def _resume_paths(tmp_path):
+    import shutil
+
+    names = {"exp1_path": "exp1", "prepass_path": "exp2_prepass", "out_path": "exp2",
+             "pc_path": "pc_estimates", "scale_path": "exp2_scale"}
+    kw = {}
+    for arg, stem in names.items():
+        dst = tmp_path / f"{stem}.parquet"
+        shutil.copy(f"results/{stem}.parquet", dst)
+        kw[arg] = str(dst)
+    return kw
+
+
+def test_run_exp2_resumes_on_committed_results_without_writing(tmp_path, capsys):
+    kw = _resume_paths(tmp_path)
+    before = {k: open(v, "rb").read() for k, v in kw.items()}
+    experiments.run_exp2(**kw)
+    assert "already recorded" in capsys.readouterr().out
+    assert {k: open(v, "rb").read() for k, v in kw.items()} == before
+
+
+def test_run_exp2_resume_refuses_a_record_that_does_not_reproduce(tmp_path):
+    kw = _resume_paths(tmp_path)
+    pc = pd.read_parquet(kw["pc_path"])
+    pc.loc[(pc.condition == "random") & (pc.method == "fss_crossing"), "p_c"] += 0.01
+    pc.to_parquet(kw["pc_path"], index=False)
+    with pytest.raises(AssertionError, match="does not reproduce"):
+        experiments.run_exp2(**kw)
+
+
+def test_run_exp2_resume_refuses_a_partial_record(tmp_path):
+    kw = _resume_paths(tmp_path)
+    pc = pd.read_parquet(kw["pc_path"])
+    pc[~((pc.condition == "patches") & (pc.b == 0.15))].to_parquet(kw["pc_path"], index=False)
+    with pytest.raises(ValueError, match="partial"):
+        experiments.run_exp2(**kw)
+
+
+def _resume_paths_2b(tmp_path):
+    import shutil
+
+    names = {"exp2_path": "exp2", "pc_path": "pc_estimates", "out_path": "exp2b",
+             "fits_path": "tail_fits"}
+    kw = {}
+    for arg, stem in names.items():
+        dst = tmp_path / f"{stem}.parquet"
+        shutil.copy(f"results/{stem}.parquet", dst)
+        kw[arg] = str(dst)
+    return kw
+
+
+def test_run_exp2b_resumes_on_committed_results_without_writing(tmp_path, capsys):
+    kw = _resume_paths_2b(tmp_path)
+    before = {k: open(v, "rb").read() for k, v in kw.items()}
+    experiments.run_exp2b(**kw)
+    assert "already recorded" in capsys.readouterr().out
+    assert {k: open(v, "rb").read() for k, v in kw.items()} == before
+
+
+def test_run_exp2b_resume_refuses_a_fit_that_does_not_reproduce(tmp_path):
+    kw = _resume_paths_2b(tmp_path)
+    fits = pd.read_parquet(kw["fits_path"])
+    fits.loc[fits.condition == "random", "alpha"] += 0.5
+    fits.to_parquet(kw["fits_path"], index=False)
+    with pytest.raises(AssertionError, match="does not reproduce"):
+        experiments.run_exp2b(**kw)
+
+
+def test_run_exp2b_resume_refuses_a_partial_record(tmp_path):
+    kw = _resume_paths_2b(tmp_path)
+    fits = pd.read_parquet(kw["fits_path"])
+    fits[fits.condition != "random"].to_parquet(kw["fits_path"], index=False)
+    with pytest.raises(ValueError, match="partial"):
+        experiments.run_exp2b(**kw)

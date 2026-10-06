@@ -1262,3 +1262,62 @@ A review of the five stacked PRs found no defect in the model code or the data. 
 - §10.2 O4, last sentence of the gate outcome (line 490): the sub-critical arm is now recorded as considered and not adopted (this entry).
 
 **Commit.** pending
+
+### DEC-048 — SPEC-18: `run.py --exp all` fails on a clean clone at Experiment 2
+
+- **Date:** 2026-10-06
+- **Raised by:** agent on SPEC-18
+- **Spec:** SPEC-18
+- **Type:** ambiguity
+- **Status:** resolved by DEC-049 (option A)
+
+**Situation.** Clean-clone check, fresh clone of `f755ca7` into a new directory, fresh venv from `requirements.txt`, `python run.py --exp all`. Exit 1 after 23 s. Experiments 0, 0b, pilot, 1-coarse, 1 and scars all took the resume path and completed; the clone's `git status` was clean afterwards, so no committed parquet was modified. `run_exp2` then raised:
+
+```
+ValueError: duplicate pc_estimates row for (regime, condition, b, kappa, method, L) = ('STUDY', 'random', 0.15, 0.0, 'var_peak', 128); nothing written
+```
+
+Cause, from reading `src/experiments.py:1373` and `src/analysis.py:435`: `run_exp0` (line 426) and `run_exp0b` (line 622) check whether their rows are already in `pc_estimates.parquet` and print "already recorded" instead of writing. `run_exp2` has no such check. On a resume it recomputes the threshold rows from the committed sweep and passes them to `write_pc_estimates`, which rejects them as duplicates of the committed ones. Experiments 2b, 3, i11 and 4 never ran, so they are untested on the resume path. `write_pc_estimates` itself behaves as documented, so the committed results are not in doubt.
+
+**Why this is a stop.** SPEC-18's first acceptance criterion is that `--exp all` exits 0 from a fresh clone. The fix is in `src/experiments.py`, which is on neither SPEC-18's may-touch list nor its must-not-touch list; the spec permits changes to `src/analysis.py` only with a DEC entry and only where a clean-clone failure requires it, and the natural fix is not there. `workflow-rules.md` §6 says to stop when the fix lies outside the permitted files.
+
+**Options.**
+
+- **A. Make `run_exp2` skip the write when its rows are already recorded**, as Experiments 0 and 0b do (compare the `(regime, condition, b, kappa, method, L)` keys, print "already recorded", continue). Smallest change, matches the existing pattern. Then rerun the clean-clone check, since 2b, 3, i11 and 4 may fail the same way. Needs SPEC-18's may-touch list widened to `src/experiments.py` and a test for the resume path. Recommended.
+- **B. Change `write_pc_estimates` to ignore identical duplicates.** Fixes every caller at once but loosens a guard that DEC-004 and DEC-012 rely on to keep the key unique. Not recommended.
+- **C. Run `--exp all` as separate commands, skipping `2`.** Leaves the failure in place and breaks the claim that one command reproduces everything. Not acceptable under §4.7.
+
+**Decision.** Option A, chosen by Aaron. See DEC-049.
+
+**Context impact.** None until decided. `project-context.md` §4.7 already says `--exp all` must work from a clean clone, so option A would conform to it rather than change it.
+
+**Commit.** pending
+
+### DEC-049 — SPEC-18: option A applied, and what the clean-clone check then found
+
+- **Date:** 2026-10-06
+- **Raised by:** agent on SPEC-18
+- **Spec:** SPEC-18
+- **Type:** deviation
+- **Status:** resolved
+
+**Decision.** Aaron chose option A of DEC-048 ("go with option A; do whatever you need to do"). SPEC-18's may-touch list is widened to `src/experiments.py`, `tests/test_exp2.py`, `tests/test_exp2b.py` and `tests/test_invariants.py`, and the spec file is updated to say so.
+
+**What changed.**
+
+1. `src/experiments.py`: `run_exp2` and `run_exp2b` now skip their write when every row they would record is already in the output file, as `run_exp0` and `run_exp0b` do. The recomputed `p_c` / `p50` (Exp 2) or `x_min`, `n_tail`, `alpha` (Exp 2b) must match the committed value, or the run raises `AssertionError("... does not reproduce ...")`; a partial record raises `ValueError`. A result that moves is a failure to reproduce, not a resume (SPEC-18 Notes). `write_pc_estimates`, `write_p50` and `write_tail_fits` are unchanged, so their duplicate guards still hold. Experiment 2b failed the same way as 2 (predicted in DEC-048); 3, 4 and i11 resume through `run_configs` and needed nothing.
+2. `tests/test_exp2.py`: six new tests (resume writes nothing; a moved value is refused; a partial record is refused; each for Exp 2 and 2b), run against copies of the committed results.
+3. `tests/test_exp2b.py`: `test_full_run_records_one_fit_per_condition` asserted that a second full run raises "duplicate". That is the behaviour this entry changes, so it now asserts the second run leaves the file byte-identical.
+4. `tests/test_invariants.py`: removed the placeholder `test_i9` (`xfail`, "I9 conservation lands in SPEC-03", body `raise NotImplementedError`). The real I9 test is `test_i9_conservation`, written in SPEC-03. The placeholder was the only `xfail` left and conflicted with the SPEC-18 criterion "none xfail".
+5. `notebooks/01-model-and-validation.ipynb`: re-executed in the working tree and committed with outputs. Its stored outputs were stale: they showed I9 and I11 as `XFAIL` (11 passed, 2 xfailed) and one registered figure. Now 12 passed, 11 figures. Code and structure are unchanged. Notebooks 02 and 03 were re-executed on the clean clone; their text outputs are identical to the committed ones, and only image bytes and the Python version in `metadata` differ, so they are left as committed.
+
+**Clean-clone result** (fresh clone of `f755ca7` plus this patch, fresh venv from `requirements.txt`, Python 3.12.1, numpy 2.5.3, pandas 3.0.6): `python run.py --exp all` exit 0, no tracked file changed; `pytest` 466 passed, 2 skipped (the two `none takes no budget` parametrised cases in `test_geometries.py`, not invariants), none xfail or failing; `python figures/make_figures.py --all` exit 0; all three notebooks execute with a fresh kernel, exit 0. The I11 result printed on that run (gaps at `phi=0` and `phi=pi/4` differ by -0.0044 +/- 0.0011, intervals do not overlap) is the committed result, and is the measured lattice artefact for Limitations, not a failure.
+
+**Not resolved here, for Aaron or Armaan.**
+
+- `results/` is 29 MB against the expected 10-20 MB (`workflow-rules.md` §9). No file exceeds 7.3 MB, so the 50 MB stop does not apply. Nothing was deleted: which of `exp0b_prepass`, `exp2_prepass`, `exp2_scale`, `i11_frame` and `pilot_settlement` back a reported claim is a call for the people who wrote the report.
+- `report/` is empty, so "every report figure maps to a registered builder" cannot be checked yet. The 11 registered builders are listed in the PR body.
+
+**Context impact.** None. `project-context.md` §4.7 already requires `--exp all` to work from a clean clone; this conforms to it.
+
+**Commit.** pending

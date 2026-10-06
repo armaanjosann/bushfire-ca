@@ -41,7 +41,7 @@ Full definitions in `workflow-rules.md` §4.
 | SPEC-15 | Tail fitting, Experiment 2b | Armaan | P5 — Full experiments | `done` | SPEC-14, SPEC-19 | #43 | DEC-005, DEC-012, DEC-038, DEC-041, DEC-042, DEC-043, DEC-047 |
 | SPEC-16 | Experiments 3 and 4, frame invariance | Armaan | P5 — Full experiments | `done` | SPEC-13 | #43 | DEC-003, DEC-008, DEC-011, DEC-015, DEC-044, DEC-047 |
 | SPEC-17 | Results figures | Armaan | P6 — Delivery | `done` | SPEC-13, SPEC-14, SPEC-15, SPEC-16 | #43 | DEC-009, DEC-010, DEC-013, DEC-016, DEC-017, DEC-041, DEC-043, DEC-045, DEC-047 |
-| SPEC-18 | Reproducibility gate | Aaron | P6 — Delivery | `not started` | SPEC-08, SPEC-17, SPEC-20, SPEC-21 |  | DEC-016, DEC-017 |
+| SPEC-18 | Reproducibility gate | Aaron | P6 — Delivery | `in review` | SPEC-08, SPEC-17, SPEC-20, SPEC-21 |  | DEC-016, DEC-017, DEC-048, DEC-049 |
 | SPEC-19 | Experiment 0b: untreated STUDY baseline thresholds | Aaron | P2 — Harness & validation | `done` | SPEC-05, SPEC-06 | #34 | DEC-011, DEC-035 |
 | SPEC-20 | Notebook foundation, model-and-validation notebook | Aaron | P2 — Harness & validation | `done` | SPEC-08 | #36 | DEC-016, DEC-017, DEC-018 |
 | SPEC-21 | Results notebooks: geometries, thresholds, tails | Armaan | P6 — Delivery | `done` | SPEC-17, SPEC-20 | #43 | DEC-016, DEC-017, DEC-037, DEC-041, DEC-043, DEC-046, DEC-047 |
