@@ -171,3 +171,12 @@ def test_full_run_records_one_fit_per_condition(inputs, tmp_path, monkeypatch):
         experiments.run_exp2b(*inputs, out_path=str(out), fits_path=str(fits_path),
                               replicates=60, size=64)
     assert len(pd.read_parquet(out)) == 4 * 60
+
+
+def test_i10_holds_over_the_committed_2b_frame():
+    """I10 over the frame Experiment 2b actually reported, not a synthetic one (SPEC-15)."""
+    from src.analysis import assert_not_truncated
+
+    frame = pd.read_parquet("results/exp2b.parquet")
+    assert len(frame) == 30_000 and frame["condition"].nunique() == 3
+    assert_not_truncated(frame)
