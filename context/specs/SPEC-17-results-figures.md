@@ -10,7 +10,7 @@ implements: [§9, §11, §10.1 D5]
 issue: [#17](https://github.com/armaanjosann/bushfire-ca/issues/17)
 branch: spec/SPEC-17-results-figures
 pr:
-decisions: [DEC-009, DEC-010, DEC-013, DEC-016, DEC-017, DEC-041, DEC-043, DEC-045]
+decisions: [DEC-009, DEC-010, DEC-013, DEC-016, DEC-017, DEC-041, DEC-043, DEC-045, DEC-047]
 ---
 
 # SPEC-17 — Results figures
@@ -103,7 +103,7 @@ ls -la figures/out/ results/scars_illustrative.npz
 - [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [x] Any contract change applied to `project-context.md` in this same PR
 - [x] `status` updated in this file and in `progress-tracker.md`
-- [ ] `figures/out/` **not** committed
+- [x] `figures/out/` **not** committed
 - [x] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 

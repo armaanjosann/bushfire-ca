@@ -10,7 +10,7 @@ implements: [§9, §11]
 issue: [#29](https://github.com/armaanjosann/bushfire-ca/issues/29)
 branch: spec/SPEC-21-results-notebooks
 pr:
-decisions: [DEC-016, DEC-017, DEC-037, DEC-041, DEC-043, DEC-046]
+decisions: [DEC-016, DEC-017, DEC-037, DEC-041, DEC-043, DEC-046, DEC-047]
 ---
 
 # SPEC-21 — Results notebooks: geometries, thresholds and tails

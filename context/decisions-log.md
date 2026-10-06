@@ -1102,7 +1102,7 @@ Seeds stay keyed to a condition's position in the **full** four-condition list, 
 - **Raised by:** Armaan (SPEC-15)
 - **Spec:** SPEC-15
 - **Type:** defect (first part) and finding (second part)
-- **Status:** **part 1 resolved; part 2 open — needs a decision from both of us**
+- **Status:** **part 1 resolved; part 2 open — needs a decision from both of us** — part 2 superseded by DEC-047 (option A)
 
 **Part 1 — the selection defect, fixed.** The Clauset–Shalizi–Newman procedure picks `x_min` by minimising the KS distance between data and fitted model. The KS distance of a correctly fitted model falls like `1/sqrt(n_tail)`, so when a distribution has no clean power-law region the search is rewarded for choosing an ever larger `x_min`: fewer points, a lower KS distance, and a "better" fit. On the first Experiment 2b run it ran away to the top of the distribution and returned fits with a **negative exponent** — a rising density, which is not a tail at all:
 
@@ -1219,5 +1219,48 @@ SPEC-21 asks each notebook to present "the threshold shift per condition with co
 Other choices: the geometry gallery in notebook 02 draws at a denser fuel bed (0.75) on a smaller lattice (96) than the experiments use, labelled as such, because treatment marks only fuel cells and at experiment densities a 16-cell block reads as a dotted square rather than a block; the settlement timing table is shown beside the reach probability with the right-censoring spelled out (DEC-037), since the fastest median times belong to the arrangements that almost nothing gets through; and both notebooks open with `%matplotlib inline`, without which a registry `Figure` renders as a repr and the committed notebook stores no image.
 
 **Context impact.** none
+
+**Commit.** pending
+
+### DEC-047 — SPEC-14/15/16/17/21: review of the stacked PRs, and what it settled
+
+- **Date:** 2026-10-06
+- **Raised by:** Aaron (reviewer of SPEC-14 to SPEC-21)
+- **Spec:** SPEC-14, SPEC-15, SPEC-16, SPEC-17, SPEC-21
+- **Type:** deviation record and decision
+- **Status:** resolved. Closes DEC-043 part 2 and confirms DEC-041. **Two `project-context.md` edits are still to be applied by hand (see Context impact).**
+
+A review of the five stacked PRs found no defect in the model code or the data. It found acceptance criteria that no longer described the results, a mislabelled `code_version`, and several unlogged scope deviations. All fixes are on the SPEC-21 branch as new commits; the lower branches are unchanged.
+
+**1. DEC-041, option A confirmed.** `strips_perp` has no scale-free threshold: its 50% point falls with `L` (0.748, 0.713, 0.670, about 0.628 at L = 1024) and is reported per lattice size, never as one value. Decided by Aaron, who delegated the call to the recommendation in DEC-041.
+
+**2. DEC-043 part 2: option A, not B.** Experiment 2b's distributions are reported and the rejected fit is stated as a finding. The sub-critical arm (option B) is **not adopted**. It would be about four minutes of compute but would change what §6.2 and §10.2 O4 specify and would invalidate the figures and notebooks already built on option A. If the report needs a fitted exponent, B is still available as a follow-up spec. The `none` fit (`x_min = 1`, `n_tail = 10,000`) uses the whole sample and is rejected like the others, so no exponent from it is reported.
+
+**3. Acceptance criteria amended to match the data.** SPEC-14 criteria 5, 6 and 7 now cover `random` and `patches` only, with `strips_perp` stated as having no crossing. SPEC-15's row count is 30,000 (three conditions), not 40,000. Each amended line carries a pointer to this entry. No other criterion was changed.
+
+**4. SPEC-16 `code_version`.** The three parquets are labelled `ef1f850`, the parent of the code commit `19058ce`, so the label names the wrong tree. Rather than overwrite committed parquets (workflow-rules §9), the experiments were re-run from a clean worktree at `19058ce` into scratch files. Experiment 3 (6,400 rows), Experiment 4 (9,000) and the I11 frame (800) are identical to the committed files in every column except `wall_ms`, which is timing. The committed results are therefore valid and are left as they are. The same check was made for SPEC-15: a clean run of Experiment 2b at `e1d7b81` reproduces `exp2b.parquet` (30,000 rows, `code_version` `c999a69` in the committed file) and `tail_fits.parquet` exactly apart from `wall_ms`.
+
+**5. Scope deviations, logged here because they were not logged when made.**
+
+| Spec | File or change | Why |
+|---|---|---|
+| SPEC-14 | `tests/test_exp2.py` (new) | Tests for the selection rule and sweep; see DEC-040. |
+| SPEC-14 | `results/exp2_prepass.parquet`, `results/exp2_scale.parquet` (new) | Pre-pass centring (DEC-040); per-L 50% points for `strips_perp` (DEC-041). |
+| SPEC-16 | `tests/test_exp3_exp4.py` (new); `tests/test_invariants.py` gains a `Path` import | Tests for the new experiments. |
+| SPEC-16 | `run.py` gains an `i11` entry | The I11 check needed an entry point; `--exp all` now includes it. §4.7 allows auxiliary entries. |
+| SPEC-15 | `tests/test_exp2b.py` gains `test_i10_holds_over_the_committed_2b_frame` | The spec says I10 must hold over the 2b frame and no test checked the committed frame. |
+
+**6. Not caused by this stack.** `tests/test_experiments.py::test_every_column_present_with_stated_dtype` (SPEC-05) fails on pandas 2.2.3 because it expects pandas 3's `str` dtype and finds `object`. No spec in this stack touches it. It is left as it is; it passes on pandas 3.
+
+**7. Notebook 03.** The §10.1 D5 statement that `PERCOLATION` and `STUDY` thresholds are not comparable was missing and is added to the opening cell of §1. Only a markdown cell changed, so no output is stale.
+
+**Commits for earlier entries** (the log's "pending" markers are left as written): DEC-040 `6d54d72`; DEC-041 `77101cf`; DEC-042 and DEC-043 `9ec889c`; DEC-044 `ed26639`; DEC-045 `07ac993`; DEC-046 `17b6193`.
+
+**Context impact.** Two statements in `project-context.md` are now wrong and have **not** been edited, because the edit was blocked in this session:
+
+- §6.2, Experiment 2b row (line 334) still lists "best `strips_perp` level" as a condition. It should say `strips_perp` is not run (DEC-041, DEC-042).
+- §10.2 O4, last sentence of the gate outcome (line 490) still says a sub-critical arm "is open in DEC-043". It should say it was considered and not adopted (this entry).
+
+Until those two lines are changed, the specification disagrees with the results; by workflow-rules §5 that is to be fixed in the same pull request.
 
 **Commit.** pending

@@ -10,7 +10,7 @@ implements: [§6.2 Exp 2b, §10.2 O4, §4.6]
 issue: "#15"
 branch: spec/SPEC-15-tail-fitting
 pr:
-decisions: [DEC-005, DEC-012, DEC-038, DEC-041, DEC-042, DEC-043]
+decisions: [DEC-005, DEC-012, DEC-038, DEC-041, DEC-042, DEC-043, DEC-047]
 ---
 
 # SPEC-15 — Tail fitting and Experiment 2b
@@ -82,7 +82,7 @@ No new dependency. `powerlaw` and `scipy` are not in the project's allowed set �
 
 - [x] `fit_tail` recovers a known exponent from synthetic power-law data with a known `x_min`, to within the returned stderr.
 - [x] `fit_tail` recovers a known cutoff from synthetic truncated power-law data, and reports a cutoff consistent with "none" on untruncated data.
-- [x] `results/exp2b.parquet` exists with 40,000 rows (4 conditions × 10,000), `truncated == False`.
+- [x] `results/exp2b.parquet` exists with 30,000 rows (3 conditions × 10,000), `truncated == False`. *(Amended per DEC-047: `strips_perp` has no threshold to run at, DEC-041 and DEC-042.)*
 - [x] `results/tail_fits.parquet` has one row per condition with `alpha`, `alpha_stderr`, `cutoff`, `x_min`, `n_tail`, `decades_above_xmin`.
 - [x] `decades_above_xmin` is reported for every condition, and the G2 decision is recorded against it.
 - [x] No import of `scipy`, `powerlaw`, or any package outside the allowed set.

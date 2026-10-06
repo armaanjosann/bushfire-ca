@@ -10,7 +10,7 @@ implements: [§6.2 Exp 3, §6.2 Exp 4, §10.1 D3, §7 I11]
 issue: [#16](https://github.com/armaanjosann/bushfire-ca/issues/16)
 branch: spec/SPEC-16-experiments-3-4
 pr:
-decisions: [DEC-003, DEC-008, DEC-011, DEC-015, DEC-044]
+decisions: [DEC-003, DEC-008, DEC-011, DEC-015, DEC-044, DEC-047]
 ---
 
 # SPEC-16 — Experiments 3 and 4, and frame invariance
@@ -103,7 +103,7 @@ PY
 - [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [x] Any contract change applied to `project-context.md` in this same PR
 - [x] `status` updated in this file and in `progress-tracker.md`
-- [ ] Both parquets committed with a real `code_version`
+- [x] Both parquets committed with a real `code_version` *(a real SHA, but of the parent of the code commit; reproduced bit-for-bit from a clean tree at the code commit, DEC-047)*
 - [x] PR open, linked to the issue — status `in review`
 - [ ] Reviewed by `reviewer` and merged — status `done` (human only)
 
