@@ -36,15 +36,15 @@ Full definitions in `workflow-rules.md` §4.
 | SPEC-10 | `patches`, `strips_perp`, `strips_para` | Armaan | P3 — Treatment geometries | `done` | SPEC-09 | #27 | DEC-007, DEC-008, DEC-024, DEC-025 |
 | SPEC-11 | `buffer` | Armaan | P3 — Treatment geometries | `done` | SPEC-02, SPEC-09 | #27 | DEC-007, DEC-026 |
 | SPEC-12 | Settlement pilot, coarse Exp 1, freeze | Aaron | P4 — Parameter freeze | `done` | SPEC-05, SPEC-06, SPEC-10, SPEC-11, SPEC-19 | #37 | DEC-003, DEC-007, DEC-011, DEC-015, DEC-037 |
-| SPEC-13 | Experiment 1: geometry × budget | Armaan | P5 — Full experiments | `in review` | SPEC-12 |  | DEC-003, DEC-009, DEC-011, DEC-013, DEC-015, DEC-039 |
-| SPEC-14 | Experiment 2: threshold shift | Armaan | P5 — Full experiments | `in review` | SPEC-06, SPEC-13, SPEC-19 |  | DEC-003, DEC-004, DEC-005, DEC-011, DEC-012, DEC-040, DEC-041, DEC-047 |
-| SPEC-15 | Tail fitting, Experiment 2b | Armaan | P5 — Full experiments | `in review` | SPEC-14, SPEC-19 |  | DEC-005, DEC-012, DEC-038, DEC-041, DEC-042, DEC-043, DEC-047 |
-| SPEC-16 | Experiments 3 and 4, frame invariance | Armaan | P5 — Full experiments | `in review` | SPEC-13 |  | DEC-003, DEC-008, DEC-011, DEC-015, DEC-044, DEC-047 |
-| SPEC-17 | Results figures | Armaan | P6 — Delivery | `in review` | SPEC-13, SPEC-14, SPEC-15, SPEC-16 |  | DEC-009, DEC-010, DEC-013, DEC-016, DEC-017, DEC-041, DEC-043, DEC-045, DEC-047 |
+| SPEC-13 | Experiment 1: geometry × budget | Armaan | P5 — Full experiments | `done` | SPEC-12 | #43 | DEC-003, DEC-009, DEC-011, DEC-013, DEC-015, DEC-039 |
+| SPEC-14 | Experiment 2: threshold shift | Armaan | P5 — Full experiments | `done` | SPEC-06, SPEC-13, SPEC-19 | #43 | DEC-003, DEC-004, DEC-005, DEC-011, DEC-012, DEC-040, DEC-041, DEC-047 |
+| SPEC-15 | Tail fitting, Experiment 2b | Armaan | P5 — Full experiments | `done` | SPEC-14, SPEC-19 | #43 | DEC-005, DEC-012, DEC-038, DEC-041, DEC-042, DEC-043, DEC-047 |
+| SPEC-16 | Experiments 3 and 4, frame invariance | Armaan | P5 — Full experiments | `done` | SPEC-13 | #43 | DEC-003, DEC-008, DEC-011, DEC-015, DEC-044, DEC-047 |
+| SPEC-17 | Results figures | Armaan | P6 — Delivery | `done` | SPEC-13, SPEC-14, SPEC-15, SPEC-16 | #43 | DEC-009, DEC-010, DEC-013, DEC-016, DEC-017, DEC-041, DEC-043, DEC-045, DEC-047 |
 | SPEC-18 | Reproducibility gate | Aaron | P6 — Delivery | `not started` | SPEC-08, SPEC-17, SPEC-20, SPEC-21 |  | DEC-016, DEC-017 |
 | SPEC-19 | Experiment 0b: untreated STUDY baseline thresholds | Aaron | P2 — Harness & validation | `done` | SPEC-05, SPEC-06 | #34 | DEC-011, DEC-035 |
 | SPEC-20 | Notebook foundation, model-and-validation notebook | Aaron | P2 — Harness & validation | `done` | SPEC-08 | #36 | DEC-016, DEC-017, DEC-018 |
-| SPEC-21 | Results notebooks: geometries, thresholds, tails | Armaan | P6 — Delivery | `in review` | SPEC-17, SPEC-20 |  | DEC-016, DEC-017, DEC-037, DEC-041, DEC-043, DEC-046, DEC-047 |
+| SPEC-21 | Results notebooks: geometries, thresholds, tails | Armaan | P6 — Delivery | `done` | SPEC-17, SPEC-20 | #43 | DEC-016, DEC-017, DEC-037, DEC-041, DEC-043, DEC-046, DEC-047 |
 
 ## Blocked
 

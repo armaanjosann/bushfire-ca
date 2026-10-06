@@ -1,7 +1,7 @@
 ---
 id: SPEC-21
 title: Results notebooks — geometries, thresholds and tails
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P6 — Delivery (Sprint 4)
@@ -9,7 +9,7 @@ depends_on: [SPEC-17, SPEC-20]
 implements: [§9, §11]
 issue: [#29](https://github.com/armaanjosann/bushfire-ca/issues/29)
 branch: spec/SPEC-21-results-notebooks
-pr:
+pr: "#43"
 decisions: [DEC-016, DEC-017, DEC-037, DEC-041, DEC-043, DEC-046, DEC-047]
 ---
 
@@ -124,7 +124,7 @@ PY
 - [x] Every deviation logged in `decisions-log.md`, IDs listed in `decisions:` above
 - [x] `status` updated in this file and in `progress-tracker.md`
 - [x] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

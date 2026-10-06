@@ -1,7 +1,7 @@
 ---
 id: SPEC-14
 title: Experiment 2 — threshold shift
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
@@ -9,7 +9,7 @@ depends_on: [SPEC-06, SPEC-13, SPEC-19]
 implements: [§6.2 Exp 2, §6.1, §2 O4]
 issue: [#14](https://github.com/armaanjosann/bushfire-ca/issues/14)
 branch: spec/SPEC-14-experiment-2
-pr:
+pr: "#43"
 decisions: [DEC-003, DEC-004, DEC-005, DEC-011, DEC-012, DEC-040, DEC-041, DEC-047]
 ---
 
@@ -105,7 +105,7 @@ PY
 - [x] `status` updated in this file and in `progress-tracker.md`
 - [x] `results/exp2.parquet` and the updated `pc_estimates.parquet` committed
 - [x] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

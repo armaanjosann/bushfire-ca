@@ -1,7 +1,7 @@
 ---
 id: SPEC-17
 title: Results figures
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P6 — Delivery (Sprint 3 → 4)
@@ -9,7 +9,7 @@ depends_on: [SPEC-13, SPEC-14, SPEC-15, SPEC-16]
 implements: [§9, §11, §10.1 D5]
 issue: [#17](https://github.com/armaanjosann/bushfire-ca/issues/17)
 branch: spec/SPEC-17-results-figures
-pr:
+pr: "#43"
 decisions: [DEC-009, DEC-010, DEC-013, DEC-016, DEC-017, DEC-041, DEC-043, DEC-045, DEC-047]
 ---
 
@@ -105,7 +105,7 @@ ls -la figures/out/ results/scars_illustrative.npz
 - [x] `status` updated in this file and in `progress-tracker.md`
 - [x] `figures/out/` **not** committed
 - [x] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

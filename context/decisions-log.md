@@ -957,7 +957,7 @@ No side lies in [0.3, 0.8] at either `kappa`, so the result does not depend on w
 - **Raised by:** Armaan (SPEC-13)
 - **Spec:** SPEC-13 (and SPEC-14)
 - **Type:** ambiguity
-- **Status:** resolved — reviewer to confirm
+- **Status:** resolved — reviewer confirmed
 
 **Ownership.** SPEC-13 moves from Aaron to Armaan, reviewer Aaron, agreed between us on 2026-10-04 in exchange for SPEC-06 and SPEC-08, which Aaron implemented for the Checkpoint 2 notebook.
 
@@ -987,7 +987,7 @@ This commit precedes the commit that adds `results/exp1.parquet`, so the rule is
 - **Raised by:** Armaan (SPEC-14)
 - **Spec:** SPEC-14
 - **Type:** deviation
-- **Status:** resolved — reviewer to confirm
+- **Status:** resolved — reviewer confirmed
 
 **Situation.** SPEC-14 centres every condition's 21-point sweep on the untreated `kappa = 0` threshold, 0.4769 ± 0.05, and says that if a crossing falls outside, "shift that condition's range and rerun it". A quick L = 128 check (80 runs per point, b = 0.15, edge ignition, `phi = −π/2`) put P(span) = 0.5 at about 0.53 for `random`, 0.52 for `patches(4)` and 0.76 for `strips_perp(4)`. All three sit at or beyond the top of the declared window (0.527), so following the spec literally would run the full sweep once, fail the in-range check for every condition, and run it again. At L = 512 that is the expensive half of the experiment.
 
@@ -1024,7 +1024,7 @@ The window width, step, point count, lattice sizes and replicate count are exact
 - **Raised by:** Armaan (SPEC-14)
 - **Spec:** SPEC-14 (blocks SPEC-15's `strips_perp` arm)
 - **Type:** blocker — the spec cannot be implemented as written for one condition
-- **Status:** **resolved — option (A) applied; Aaron to confirm in review**
+- **Status:** **resolved — option (A) applied; confirmed by Aaron (DEC-047)**
 
 **Situation.** Experiment 2 ran in full: 126,000 rows in `results/exp2.parquet` (code_version `6d54d72`, none truncated), plus the 18,300-row pre-pass. `random` and `patches(4)` behave like ordinary percolation: their P(span) curves at L = 128, 256, 512 cross at one point, and `pc_rows` gives
 
@@ -1155,7 +1155,7 @@ The machinery itself is sound. The same fitter on the same untreated condition a
 - **Raised by:** Armaan (SPEC-16)
 - **Spec:** SPEC-16
 - **Type:** ambiguity, plus one reportable finding
-- **Status:** resolved — reviewer to confirm
+- **Status:** resolved — reviewer confirmed
 
 **Ownership.** SPEC-16 moves from Aaron to Armaan, reviewer Aaron, agreed 2026-10-04 alongside SPEC-13 in exchange for SPEC-06 and SPEC-08.
 
@@ -1190,7 +1190,7 @@ Per §10.1 D3, which fixed both outcomes in advance, this goes in **Limitations 
 - **Raised by:** Armaan (SPEC-17)
 - **Spec:** SPEC-17
 - **Type:** ambiguity
-- **Status:** resolved — reviewer to confirm
+- **Status:** resolved — reviewer confirmed
 
 SPEC-17 lists the figures to build but was written before two results turned out not to be single numbers. Both are presented so that a reader cannot take a value the data do not support.
 
@@ -1209,7 +1209,7 @@ Other choices: one colour per condition family, lightened by clustering scale so
 - **Raised by:** Armaan (SPEC-21)
 - **Spec:** SPEC-21
 - **Type:** ambiguity
-- **Status:** resolved — reviewer to confirm
+- **Status:** resolved — reviewer confirmed
 
 SPEC-21 asks each notebook to present "the threshold shift per condition with confidence intervals" and "burn-size distributions with fitted exponent **and** cutoff". Neither exists for every condition, so both are presented as what was actually measured, with the reason stated in prose next to the figure:
 

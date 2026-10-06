@@ -1,7 +1,7 @@
 ---
 id: SPEC-15
 title: Tail fitting and Experiment 2b
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
@@ -9,7 +9,7 @@ depends_on: [SPEC-14, SPEC-19]
 implements: [§6.2 Exp 2b, §10.2 O4, §4.6]
 issue: "#15"
 branch: spec/SPEC-15-tail-fitting
-pr:
+pr: "#43"
 decisions: [DEC-005, DEC-012, DEC-038, DEC-041, DEC-042, DEC-043, DEC-047]
 ---
 
@@ -112,7 +112,7 @@ pytest -q tests/test_analysis.py -k tail
 - [x] **§10.2 O4 updated in `project-context.md` in this same PR, recording the gate outcome**
 - [x] `status` updated in this file and in `progress-tracker.md`
 - [x] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 

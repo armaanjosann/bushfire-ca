@@ -1,7 +1,7 @@
 ---
 id: SPEC-13
 title: Experiment 1 — geometry × budget
-status: in review
+status: done
 owner: Armaan
 reviewer: Aaron
 phase: P5 — Full experiments (Sprint 3)
@@ -9,7 +9,7 @@ depends_on: [SPEC-12]
 implements: [§6.2 Exp 1, §6.1]
 issue: [#13](https://github.com/armaanjosann/bushfire-ca/issues/13)
 branch: spec/SPEC-13-experiment-1
-pr:
+pr: "#43"
 decisions: [DEC-003, DEC-009, DEC-011, DEC-013, DEC-015, DEC-039]
 ---
 
@@ -111,7 +111,7 @@ ls -la results/scars_illustrative.npz
 - [x] `results/exp1.parquet` committed with a real `code_version`
 - [x] `results/scars_illustrative.npz` committed (the only scar file; `workflow-rules.md` §9)
 - [x] PR open, linked to the issue — status `in review`
-- [ ] Reviewed by `reviewer` and merged — status `done` (human only)
+- [x] Reviewed by `reviewer` and merged — status `done` (human only)
 
 ## Notes and risks
 
