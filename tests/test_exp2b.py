@@ -166,10 +166,11 @@ def test_full_run_records_one_fit_per_condition(inputs, tmp_path, monkeypatch):
     assert (fits["experiment"] == "2b").all() and (fits["replicates"] == 60).all()
     assert (fits["x_max"] == 64 * 64).all()
     assert fits["decades_above_xmin"].notna().all()
-    # resuming does not rerun anything and refuses to record the same fits twice
-    with pytest.raises(ValueError, match="duplicate"):
-        experiments.run_exp2b(*inputs, out_path=str(out), fits_path=str(fits_path),
-                              replicates=60, size=64)
+    # resuming does not rerun anything and does not record the same fits twice (DEC-048)
+    before = fits_path.read_bytes()
+    experiments.run_exp2b(*inputs, out_path=str(out), fits_path=str(fits_path),
+                          replicates=60, size=64)
+    assert fits_path.read_bytes() == before
     assert len(pd.read_parquet(out)) == 4 * 60
 
 

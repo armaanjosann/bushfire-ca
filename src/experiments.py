@@ -21,8 +21,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.analysis import (PC_PATH, TAIL_FITS_PATH, assert_not_truncated, fit_tail, g2_gate,
+from src.analysis import (PC_PATH, TAIL_FITS_PATH, TAIL_KEY, assert_not_truncated, fit_tail, g2_gate,
                           pc_rows, resolve_p, write_pc_estimates, write_tail_fits)
+from src.analysis import _keys as _pc_keys, _read_pc
 from src.model import P_C_LITERATURE, SETTLEMENT_SIDE, Config, RunResult, run_fire
 
 # Run-time tuning. Constants, read at call time and never mutated by this
@@ -1305,6 +1306,42 @@ def write_p50(rows, path: str = EXP2_SCALE_PATH) -> None:
     os.replace(tmp, out_path)
 
 
+def _exp2_already_recorded(rows, scale_rows, pc_path, scale_path) -> bool:
+    """True if this sweep's threshold rows are already in the two output files.
+
+    Experiments 0 and 0b skip their write on a resume; this is the same rule for
+    Experiment 2 (DEC-048). All-present means the committed record is kept, after
+    checking the recomputed values match it (a result that moves is not a resume,
+    it is a failure to reproduce). None-present means write as normal. Anything
+    in between is a partial record and is refused.
+    """
+    pc_new = pd.DataFrame(list(rows))
+    sc_new = pd.DataFrame(list(scale_rows))
+    pc_old = _read_pc(Path(pc_path)) if Path(pc_path).exists() else None
+    sc_old = pd.read_parquet(scale_path) if Path(scale_path).exists() else None
+
+    pc_key = lambda d: dict(zip(_pc_keys(d), d["p_c"]))
+    sc_key = lambda d: dict(zip(map(tuple, d[["regime", "condition", "b", "kappa", "L"]].to_numpy().tolist()),
+                                d["p50"]))
+    state = []
+    for new, old, key, label in ((pc_new, pc_old, pc_key, pc_path), (sc_new, sc_old, sc_key, scale_path)):
+        if new.empty:
+            continue
+        want = key(new)
+        have = key(old) if old is not None else {}
+        hit = [k for k in want if k in have]
+        if hit and len(hit) != len(want):
+            raise ValueError(f"{label} holds a partial Experiment 2 record; resolve by hand")
+        for k in hit:
+            if not math.isclose(want[k], have[k], abs_tol=1e-6):
+                raise AssertionError(f"Experiment 2 does not reproduce: {k} is {want[k]} now, "
+                                     f"{have[k]} in {label}")
+        state.append(bool(hit))
+    if len(set(state)) > 1:
+        raise ValueError(f"{pc_path} and {scale_path} disagree on whether Experiment 2 is recorded")
+    return bool(state) and state[0]
+
+
 def run_exp2(exp1_path: str = EXP1_PATH, prepass_path: str = EXP2_PREPASS_PATH,
              out_path: str = EXP2_PATH, pc_path: str = PC_PATH, sizes: Sequence[int] = EXP2_L,
              replicates: int = EXP2_R, centres: dict[str, float] | None = None,
@@ -1370,6 +1407,9 @@ def run_exp2(exp1_path: str = EXP1_PATH, prepass_path: str = EXP2_PREPASS_PATH,
 
     if not rows:
         raise AssertionError("Experiment 2 recorded no threshold for any condition; nothing written")
+    if _exp2_already_recorded(rows, scale_rows, pc_path, scale_path):
+        print(f"Experiment 2 already recorded in {pc_path}; nothing appended.")
+        return df
     write_pc_estimates(rows, pc_path)
     write_p50(scale_rows, scale_path)
     print("Experiment 2: " + "; ".join(report))
@@ -1527,6 +1567,32 @@ def exp2b_fits(df: pd.DataFrame, replicates: int) -> list[dict]:
     return rows
 
 
+def _tail_fits_already_recorded(fits: pd.DataFrame, path: str) -> bool:
+    """True if every fit row's key is already in `path` and matches it (DEC-048).
+
+    The resume rule of `_exp2_already_recorded`, for Experiment 2b: all present
+    and equal means keep the committed record; none present means write; a
+    partial record, or a fit that moved, is refused.
+    """
+    if not Path(path).exists():
+        return False
+    old = pd.read_parquet(path)
+    key = lambda d: {k: row for k, row in zip(d[TAIL_KEY].itertuples(index=False, name=None),
+                                              d.to_dict("records"))}
+    want, have = key(fits), key(old)
+    hit = [k for k in want if k in have]
+    if not hit:
+        return False
+    if len(hit) != len(want):
+        raise ValueError(f"{path} holds a partial Experiment 2b record; resolve by hand")
+    for k in hit:
+        for col in ("x_min", "n_tail", "alpha"):
+            if not np.isclose(float(want[k][col]), float(have[k][col]), rtol=1e-4, equal_nan=True):
+                raise AssertionError(f"Experiment 2b does not reproduce: {col} for {k} is "
+                                     f"{want[k][col]} now, {have[k][col]} in {path}")
+    return True
+
+
 def run_exp2b(exp2_path: str = EXP2_PATH, pc_path: str = PC_PATH, out_path: str = EXP2B_PATH,
               fits_path: str = TAIL_FITS_PATH, replicates: int = EXP2B_R,
               conditions: Sequence[str] | None = None, size: int = EXP2B_L) -> pd.DataFrame:
@@ -1552,7 +1618,9 @@ def run_exp2b(exp2_path: str = EXP2_PATH, pc_path: str = PC_PATH, out_path: str 
         (replicates == EXP2B_R and conditions is None) or replicates == EXP2B_R_RAISED)
     if full and conditions is None and len(runnable) < len(exp2b_levels(exp2_path)):
         print(f"Experiment 2b full run over the {len(runnable)} conditions with a threshold.")
-    if full:
+    if full and _tail_fits_already_recorded(fits, fits_path):
+        print(f"Experiment 2b already recorded in {fits_path}; nothing appended.")
+    elif full:
         write_tail_fits(fits, fits_path)
     else:
         print(f"Experiment 2b staged run (R={replicates}, L={size}): no fits recorded.")
