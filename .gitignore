@@ -1,4 +1,34 @@
+# --- Python ---
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Environments ---
+.venv/
+venv/
+env/
+
+# --- macOS ---
 .DS_Store
-results/
+
+# --- Editors ---
+.vscode/
+.idea/
+*.swp
+
+# --- Generated figures ---
+# figures/make_figures.py writes here. Figures are rebuilt from results/ by
+# `python figures/make_figures.py --all`, so they are not committed
+# (workflow-rules.md §7). The builders are the deliverable, not the PNGs.
+figures/out/
+
+# --- Results ---
+# NOTE: results/ is deliberately NOT ignored. The parquet is part of the
+# record, not a build artefact (workflow-rules.md §9). Append-only, and every
+# row carries code_version. Do not add results/ here.
+# Scratch and exploratory runs are deleted before commit, not gitignored —
+# these two patterns just stop them being staged by accident.
+results/scratch/
+results/*_tmp.parquet
